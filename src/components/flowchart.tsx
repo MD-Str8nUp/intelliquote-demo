@@ -129,9 +129,23 @@ export function FlowchartWizard() {
       // Simulate extraction (different data per plan type)
       await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1500))
 
+      // Simulate realistic extraction data
+      const area = 120 + Math.round(Math.random() * 200)
       const extractedData = planType === 'architectural'
-        ? { walls: 18 + Math.round(Math.random() * 12), openings: 8 + Math.round(Math.random() * 8), area: 120 + Math.round(Math.random() * 200) }
-        : { bracingZones: 4 + Math.round(Math.random() * 4), lintels: 6 + Math.round(Math.random() * 8), tieDowns: 8 + Math.round(Math.random() * 12) }
+        ? {
+            area,
+            wallLinealMetres: Math.round(area * 0.55 + Math.random() * 20),   // LM of walls
+            floorSqMetres: area,                                                // m2 of floor
+            roofSqMetres: Math.round(area * 1.15 + Math.random() * 15),        // m2 of roof (pitch adds ~15%)
+            openings: 8 + Math.round(Math.random() * 8),
+            wallSegments: 18 + Math.round(Math.random() * 12),
+          }
+        : {
+            bracingZones: 4 + Math.round(Math.random() * 4),
+            lintels: 6 + Math.round(Math.random() * 8),
+            tieDowns: 8 + Math.round(Math.random() * 12),
+            bracingWallLM: Math.round(area * 0.3 + Math.random() * 10),       // LM of bracing walls
+          }
 
       setPlanFiles(prev => {
         const updated = prev.map(p => p.id === fileId ? { ...p, extracting: false, extractedData } : p)
@@ -394,34 +408,56 @@ function PlanUploadStep({
             <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="font-semibold text-green-900 mb-3">Plan Analysis Complete</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-white rounded-lg p-3 border border-green-100">
-                  <p className="text-xs text-green-600 mb-1">Ground Floor Area</p>
-                  <p className="text-xl font-bold text-slate-900">{combinedArea} m{'\u00b2'}</p>
+
+              {/* Key measurements - the numbers carpenters need */}
+              {archFile?.extractedData && (
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="bg-white rounded-lg p-3 border border-green-100">
+                    <p className="text-xs text-green-600 mb-1">Walls (lineal)</p>
+                    <p className="text-2xl font-bold text-slate-900">{archFile.extractedData.wallLinealMetres} <span className="text-sm font-medium text-slate-500">LM</span></p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-green-100">
+                    <p className="text-xs text-green-600 mb-1">Floor Area</p>
+                    <p className="text-2xl font-bold text-slate-900">{archFile.extractedData.floorSqMetres} <span className="text-sm font-medium text-slate-500">m{'\u00b2'}</span></p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-green-100">
+                    <p className="text-xs text-green-600 mb-1">Roof Area</p>
+                    <p className="text-2xl font-bold text-slate-900">{archFile.extractedData.roofSqMetres} <span className="text-sm font-medium text-slate-500">m{'\u00b2'}</span></p>
+                  </div>
                 </div>
+              )}
+
+              {/* Secondary details */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {archFile?.extractedData && (
                   <>
-                    <div className="bg-white rounded-lg p-3 border border-green-100">
-                      <p className="text-xs text-blue-600 mb-1">Wall Segments</p>
-                      <p className="text-xl font-bold text-slate-900">{archFile.extractedData.walls}</p>
+                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
+                      <p className="text-xs text-blue-600 mb-0.5">Wall Segments</p>
+                      <p className="text-lg font-bold text-slate-900">{archFile.extractedData.wallSegments}</p>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border border-green-100">
-                      <p className="text-xs text-blue-600 mb-1">Openings</p>
-                      <p className="text-xl font-bold text-slate-900">{archFile.extractedData.openings}</p>
+                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
+                      <p className="text-xs text-blue-600 mb-0.5">Openings</p>
+                      <p className="text-lg font-bold text-slate-900">{archFile.extractedData.openings}</p>
                     </div>
                   </>
                 )}
                 {structFile?.extractedData && (
-                  <div className="bg-white rounded-lg p-3 border border-green-100">
-                    <p className="text-xs text-purple-600 mb-1">Bracing Zones</p>
-                    <p className="text-xl font-bold text-slate-900">{structFile.extractedData.bracingZones}</p>
-                  </div>
+                  <>
+                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
+                      <p className="text-xs text-purple-600 mb-0.5">Bracing Zones</p>
+                      <p className="text-lg font-bold text-slate-900">{structFile.extractedData.bracingZones}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
+                      <p className="text-xs text-purple-600 mb-0.5">Bracing Walls</p>
+                      <p className="text-lg font-bold text-slate-900">{structFile.extractedData.bracingWallLM} <span className="text-xs text-slate-500">LM</span></p>
+                    </div>
+                  </>
                 )}
               </div>
               {structFile?.extractedData && (
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                    <p className="text-xs text-purple-600 mb-0.5">Lintels Identified</p>
+                    <p className="text-xs text-purple-600 mb-0.5">Lintels</p>
                     <p className="text-lg font-bold text-slate-900">{structFile.extractedData.lintels}</p>
                   </div>
                   <div className="bg-white rounded-lg p-2.5 border border-green-100">
