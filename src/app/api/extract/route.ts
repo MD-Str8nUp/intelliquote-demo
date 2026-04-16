@@ -5,10 +5,13 @@ import Anthropic from '@anthropic-ai/sdk'
 // Allow up to 60s for PDF download + Claude analysis
 export const maxDuration = 60
 
+const SUPABASE_URL = 'https://inrzfybiqkdkmyflufci.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlucnpmeWJpcWtka215Zmx1ZmNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAzMTI4NzksImV4cCI6MjA3NTg4ODg3OX0.WWIxW6So9pIwI2gnwtMNbYAGa9XLyxkB0wfJrdeb4Sc'
+
 function getSupabase() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://inrzfybiqkdkmyflufci.supabase.co',
-    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    process.env.NEXT_PUBLIC_SUPABASE_URL || SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY
   )
 }
 
