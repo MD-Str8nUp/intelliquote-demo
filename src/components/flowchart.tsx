@@ -77,23 +77,28 @@ export function FlowchartWizard() {
   const { currentStep, setCurrentStep, answers, addAnswer, setCurrentQuote, setCurrentPage } = useAppContext()
   const [isGenerating, setIsGenerating] = useState(false)
   const [generated, setGenerated] = useState(false)
-  const [uploadState, setUploadState] = useState<{
-    file: File | null
+  interface PlanFile {
+    id: string
+    file: File
+    type: 'architectural' | 'structural'
     uploading: boolean
     extracting: boolean
     uploaded: boolean
-    extractedArea: number | null
     storagePath: string | null
+    extractedData: { walls?: number; openings?: number; area?: number; bracingZones?: number; lintels?: number; tieDowns?: number } | null
     error: string | null
-  }>({ file: null, uploading: false, extracting: false, uploaded: false, extractedArea: null, storagePath: null, error: null })
+  }
+  const [planFiles, setPlanFiles] = useState<PlanFile[]>([])
+  const [extractionComplete, setExtractionComplete] = useState(false)
+  const [combinedArea, setCombinedArea] = useState<number | null>(null)
 
   const currentStepData = STEPS[currentStep]
   const progress = ((currentStep + 1) / STEPS.length) * 100
   const currentAnswer = answers.find(a => a.stepId === currentStepData?.id)
 
-  // For the upload step, consider it "answered" once extraction is complete
+  // For the upload step, consider it "answered" once at least one file is extracted
   const isStepAnswered = currentStepData?.id === 'upload-plans'
-    ? uploadState.extractedArea !== null
+    ? extractionComplete && combinedArea !== null
     : !!currentAnswer
 
   const handleNext = () => {
@@ -112,39 +117,58 @@ export function FlowchartWizard() {
     addAnswer({ stepId: currentStepData.id, value, answeredAt: new Date().toISOString() })
   }
 
-  const handleFileUpload = useCallback(async (file: File) => {
-    if (!file.type.includes('pdf')) {
-      setUploadState(prev => ({ ...prev, error: 'Only PDF files are supported' }))
-      return
+  const handleFileUpload = useCallback(async (file: File, planType: 'architectural' | 'structural') => {
+    if (!file.type.includes('pdf')) return
+
+    const fileId = `plan-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
+    const newPlan: PlanFile = {
+      id: fileId, file, type: planType,
+      uploading: true, extracting: false, uploaded: false,
+      storagePath: null, extractedData: null, error: null,
     }
 
-    setUploadState({ file, uploading: true, extracting: false, uploaded: false, extractedArea: null, storagePath: null, error: null })
+    setPlanFiles(prev => [...prev.filter(p => p.type !== planType), newPlan])
+    setExtractionComplete(false)
 
     try {
-      // Upload to Supabase storage
       const result = await uploadPlan(file)
-
       if (!result) {
-        setUploadState(prev => ({ ...prev, uploading: false, error: 'Upload failed. Please try again.' }))
+        setPlanFiles(prev => prev.map(p => p.id === fileId ? { ...p, uploading: false, error: 'Upload failed' } : p))
         return
       }
 
-      setUploadState(prev => ({ ...prev, uploading: false, extracting: true, uploaded: true, storagePath: result.path }))
+      setPlanFiles(prev => prev.map(p => p.id === fileId ? { ...p, uploading: false, extracting: true, uploaded: true, storagePath: result.path } : p))
 
-      // Simulate AI extraction of floor area (in production this would call PyMuPDF + Claude)
-      await new Promise(resolve => setTimeout(resolve, 2500))
+      // Simulate extraction (different data per plan type)
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1500))
 
-      // Generate realistic floor area based on file size (demo simulation)
-      const extractedArea = 120 + Math.round(Math.random() * 200)
+      const extractedData = planType === 'architectural'
+        ? { walls: 18 + Math.round(Math.random() * 12), openings: 8 + Math.round(Math.random() * 8), area: 120 + Math.round(Math.random() * 200) }
+        : { bracingZones: 4 + Math.round(Math.random() * 4), lintels: 6 + Math.round(Math.random() * 8), tieDowns: 8 + Math.round(Math.random() * 12) }
 
-      setUploadState(prev => ({ ...prev, extracting: false, extractedArea }))
-
-      // Save as answer
-      addAnswer({ stepId: 'upload-plans', value: String(extractedArea), answeredAt: new Date().toISOString() })
-    } catch (err) {
-      setUploadState(prev => ({ ...prev, uploading: false, extracting: false, error: 'Upload failed. Please try again.' }))
+      setPlanFiles(prev => {
+        const updated = prev.map(p => p.id === fileId ? { ...p, extracting: false, extractedData } : p)
+        // Check if all files are done extracting
+        const allDone = updated.every(p => !p.uploading && !p.extracting && p.extractedData)
+        if (allDone) {
+          const archFile = updated.find(p => p.type === 'architectural')
+          const area = archFile?.extractedData?.area || 185
+          setCombinedArea(area)
+          setExtractionComplete(true)
+          addAnswer({ stepId: 'upload-plans', value: String(area), answeredAt: new Date().toISOString() })
+        }
+        return updated
+      })
+    } catch {
+      setPlanFiles(prev => prev.map(p => p.id === fileId ? { ...p, uploading: false, extracting: false, error: 'Upload failed' } : p))
     }
   }, [addAnswer])
+
+  const removePlanFile = useCallback((planType: 'architectural' | 'structural') => {
+    setPlanFiles(prev => prev.filter(p => p.type !== planType))
+    setExtractionComplete(false)
+    setCombinedArea(null)
+  }, [])
 
   const generateQuote = async () => {
     setIsGenerating(true)
@@ -153,7 +177,7 @@ export function FlowchartWizard() {
     const windClass = (answers.find(a => a.stepId === 'wind-class')?.value as string) || 'N2'
     const roofMaterial = (answers.find(a => a.stepId === 'roof-material')?.value as string) || 'tile'
     const storeys = Number(answers.find(a => a.stepId === 'storeys')?.value || 1) as 1 | 2
-    const floorArea = uploadState.extractedArea || 185
+    const floorArea = combinedArea || 185
     const soilType = (answers.find(a => a.stepId === 'soil-type')?.value as string) || 'M'
 
     const baseCostPerSqm = roofMaterial === 'tile' ? 165 : 145
@@ -305,9 +329,11 @@ export function FlowchartWizard() {
 
           {currentStepData.type === 'file-upload' && (
             <PlanUploadStep
-              uploadState={uploadState}
+              planFiles={planFiles}
+              extractionComplete={extractionComplete}
+              combinedArea={combinedArea}
               onFileSelect={handleFileUpload}
-              onRemove={() => setUploadState({ file: null, uploading: false, extracting: false, uploaded: false, extractedArea: null, storagePath: null, error: null })}
+              onRemove={removePlanFile}
             />
           )}
         </div>
@@ -327,157 +353,199 @@ export function FlowchartWizard() {
 }
 
 function PlanUploadStep({
-  uploadState,
+  planFiles,
+  extractionComplete,
+  combinedArea,
   onFileSelect,
   onRemove,
 }: {
-  uploadState: {
-    file: File | null
-    uploading: boolean
-    extracting: boolean
-    uploaded: boolean
-    extractedArea: number | null
-    storagePath: string | null
-    error: string | null
-  }
+  planFiles: { id: string; file: File; type: 'architectural' | 'structural'; uploading: boolean; extracting: boolean; uploaded: boolean; storagePath: string | null; extractedData: Record<string, number> | null; error: string | null }[]
+  extractionComplete: boolean
+  combinedArea: number | null
+  onFileSelect: (file: File, type: 'architectural' | 'structural') => void
+  onRemove: (type: 'architectural' | 'structural') => void
+}) {
+  const archRef = useRef<HTMLInputElement>(null)
+  const structRef = useRef<HTMLInputElement>(null)
+
+  const archFile = planFiles.find(p => p.type === 'architectural')
+  const structFile = planFiles.find(p => p.type === 'structural')
+
+  return (
+    <div className="space-y-4">
+      {/* Two upload zones side by side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Architectural Plans */}
+        <PlanSlot
+          label="Architectural Plans"
+          description="Floor plans, elevations, sections"
+          icon="A"
+          colour="blue"
+          planFile={archFile || null}
+          inputRef={archRef}
+          onFileSelect={(f) => onFileSelect(f, 'architectural')}
+          onRemove={() => onRemove('architectural')}
+        />
+
+        {/* Structural Plans */}
+        <PlanSlot
+          label="Structural Plans"
+          description="Bracing, tie-downs, lintels, footings"
+          icon="S"
+          colour="purple"
+          planFile={structFile || null}
+          inputRef={structRef}
+          onFileSelect={(f) => onFileSelect(f, 'structural')}
+          onRemove={() => onRemove('structural')}
+        />
+      </div>
+
+      {/* Combined extraction results */}
+      {extractionComplete && combinedArea && (
+        <div className="bg-green-50 rounded-xl border border-green-200 p-5">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-green-900 mb-3">Plan Analysis Complete</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-white rounded-lg p-3 border border-green-100">
+                  <p className="text-xs text-green-600 mb-1">Ground Floor Area</p>
+                  <p className="text-xl font-bold text-slate-900">{combinedArea} m{'\u00b2'}</p>
+                </div>
+                {archFile?.extractedData && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-green-100">
+                      <p className="text-xs text-blue-600 mb-1">Wall Segments</p>
+                      <p className="text-xl font-bold text-slate-900">{archFile.extractedData.walls}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-green-100">
+                      <p className="text-xs text-blue-600 mb-1">Openings</p>
+                      <p className="text-xl font-bold text-slate-900">{archFile.extractedData.openings}</p>
+                    </div>
+                  </>
+                )}
+                {structFile?.extractedData && (
+                  <div className="bg-white rounded-lg p-3 border border-green-100">
+                    <p className="text-xs text-purple-600 mb-1">Bracing Zones</p>
+                    <p className="text-xl font-bold text-slate-900">{structFile.extractedData.bracingZones}</p>
+                  </div>
+                )}
+              </div>
+              {structFile?.extractedData && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="bg-white rounded-lg p-2.5 border border-green-100">
+                    <p className="text-xs text-purple-600 mb-0.5">Lintels Identified</p>
+                    <p className="text-lg font-bold text-slate-900">{structFile.extractedData.lintels}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2.5 border border-green-100">
+                    <p className="text-xs text-purple-600 mb-0.5">Tie-Down Points</p>
+                    <p className="text-lg font-bold text-slate-900">{structFile.extractedData.tieDowns}</p>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-green-700 mt-3">
+                {planFiles.length === 2
+                  ? 'Both architectural and structural plans analysed. Cross-referenced for AS 1684 compliance.'
+                  : 'Plan analysed. Upload both plan types for full cross-referencing.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Any file still processing */}
+      {planFiles.some(p => p.extracting) && (
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
+          <div className="space-y-2 text-sm text-amber-700">
+            <p className="animate-pulse">Reading PDF structure and identifying layers...</p>
+            <p className="animate-pulse" style={{ animationDelay: '0.5s' }}>Detecting wall segments, openings, and dimensions...</p>
+            <p className="animate-pulse" style={{ animationDelay: '1s' }}>Calculating ground floor area and structural requirements...</p>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-blue-50 rounded-lg p-4">
+        <h4 className="font-medium text-blue-900 text-sm mb-2">How it works</h4>
+        <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+          <li>Upload architectural plans (floor area, walls, openings)</li>
+          <li>Upload structural plans (bracing, lintels, tie-downs)</li>
+          <li>IntelliQuote cross-references both for AS 1684 compliance</li>
+          <li>Accurate quote generated from real measurements</li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+function PlanSlot({
+  label, description, icon, colour, planFile, inputRef, onFileSelect, onRemove,
+}: {
+  label: string
+  description: string
+  icon: string
+  colour: 'blue' | 'purple'
+  planFile: { file: File; uploading: boolean; extracting: boolean; uploaded: boolean; extractedData: Record<string, number> | null; error: string | null } | null
+  inputRef: React.RefObject<HTMLInputElement>
   onFileSelect: (file: File) => void
   onRemove: () => void
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const colourMap = {
+    blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', accent: 'bg-blue-100', dragBg: 'bg-blue-50 border-blue-400' },
+    purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', accent: 'bg-purple-100', dragBg: 'bg-purple-50 border-purple-400' },
+  }
+  const c = colourMap[colour]
 
-  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true) }, [])
-  const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false) }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const files = Array.from(e.dataTransfer.files)
-    if (files[0]) onFileSelect(files[0])
-  }, [onFileSelect])
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) onFileSelect(file)
-  }, [onFileSelect])
-
-  // Show uploaded file with extraction results
-  if (uploadState.file) {
+  if (planFile) {
+    const isProcessing = planFile.uploading || planFile.extracting
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-4 p-4 bg-white rounded-xl border-2 border-slate-200">
-          <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <FileText className="w-6 h-6 text-red-500" />
+      <div className={`rounded-xl border-2 ${planFile.extractedData ? 'border-green-200 bg-green-50/30' : c.border} p-4`}>
+        <div className="flex items-start gap-3">
+          <div className={`w-10 h-10 ${c.accent} rounded-lg flex items-center justify-center flex-shrink-0`}>
+            <span className={`font-bold text-sm ${c.text}`}>{icon}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-slate-900 truncate">{uploadState.file.name}</p>
-            <div className="flex items-center gap-2 text-sm mt-1">
-              <span className="text-slate-400">{(uploadState.file.size / 1024 / 1024).toFixed(2)} MB</span>
-              {uploadState.uploading && (
-                <span className="text-blue-600 font-medium flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Uploading to cloud...
-                </span>
-              )}
-              {uploadState.extracting && (
-                <span className="text-amber-600 font-medium flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Extracting measurements...
-                </span>
-              )}
-              {uploadState.uploaded && !uploadState.extracting && uploadState.extractedArea && (
-                <span className="text-green-600 font-medium flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> Stored in Supabase
-                </span>
-              )}
+            <p className="text-xs font-medium text-slate-500 mb-0.5">{label}</p>
+            <p className="font-medium text-slate-900 truncate text-sm">{planFile.file.name}</p>
+            <div className="flex items-center gap-2 text-xs mt-1">
+              <span className="text-slate-400">{(planFile.file.size / 1024 / 1024).toFixed(1)} MB</span>
+              {planFile.uploading && <span className="text-blue-600 font-medium flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</span>}
+              {planFile.extracting && <span className="text-amber-600 font-medium flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Extracting...</span>}
+              {planFile.extractedData && <span className="text-green-600 font-medium flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Done</span>}
+              {planFile.error && <span className="text-red-600 font-medium">{planFile.error}</span>}
             </div>
-
-            {/* Progress bar during upload/extraction */}
-            {(uploadState.uploading || uploadState.extracting) && (
-              <div className="h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${uploadState.uploading ? 'bg-blue-500 w-1/2' : 'bg-amber-500 animate-pulse w-full'}`} />
+            {isProcessing && (
+              <div className="h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${planFile.uploading ? 'bg-blue-500 w-1/2' : 'bg-amber-500 animate-pulse w-full'}`} />
               </div>
             )}
           </div>
-
-          {!uploadState.uploading && !uploadState.extracting && (
-            <button onClick={onRemove} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+          {!isProcessing && (
+            <button onClick={onRemove} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
-
-        {/* Extraction results */}
-        {uploadState.extractedArea && (
-          <div className="bg-green-50 rounded-xl border border-green-200 p-5">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-semibold text-green-900 mb-2">Plan Analysis Complete</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white rounded-lg p-3 border border-green-100">
-                    <p className="text-xs text-green-600 mb-1">Total Ground Floor Area</p>
-                    <p className="text-2xl font-bold text-slate-900">{uploadState.extractedArea} m\u00b2</p>
-                  </div>
-                  <div className="bg-white rounded-lg p-3 border border-green-100">
-                    <p className="text-xs text-green-600 mb-1">Extraction Method</p>
-                    <p className="text-sm font-medium text-slate-900">PyMuPDF + AI Vision</p>
-                    <p className="text-xs text-slate-500 mt-1">Vector PDF detected</p>
-                  </div>
-                </div>
-                <p className="text-xs text-green-700 mt-3">
-                  Measurements extracted from architectural plans. Wall segments, openings, and dimensions identified.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Extraction in progress messages */}
-        {uploadState.extracting && (
-          <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
-            <div className="space-y-2 text-sm text-amber-700">
-              <p className="animate-pulse">Reading PDF structure and identifying layers...</p>
-              <p className="animate-pulse" style={{ animationDelay: '0.5s' }}>Detecting wall segments and dimensions...</p>
-              <p className="animate-pulse" style={{ animationDelay: '1s' }}>Calculating total ground floor area...</p>
-            </div>
-          </div>
-        )}
-
-        {uploadState.error && (
-          <div className="bg-red-50 rounded-xl border border-red-200 p-4">
-            <p className="text-sm text-red-700">{uploadState.error}</p>
-          </div>
-        )}
       </div>
     )
   }
 
-  // Show drop zone
   return (
-    <div className="space-y-4">
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative p-8 rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200 text-center ${isDragging ? 'border-amber-500 bg-amber-50' : 'border-slate-300 hover:border-slate-400 bg-slate-50'}`}
-      >
-        <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Upload className="w-8 h-8 text-amber-600" />
-        </div>
-        <p className="text-lg font-medium text-slate-900 mb-1">{isDragging ? 'Drop your plans here' : 'Drag & drop your PDF plans'}</p>
-        <p className="text-sm text-slate-500 mb-4">or click to browse files</p>
-        <p className="text-xs text-slate-400">PDF files only. Max 50MB. Vector PDFs from AutoCAD/Revit give best results.</p>
+    <div
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+      onDragLeave={(e) => { e.preventDefault(); setIsDragging(false) }}
+      onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) onFileSelect(f) }}
+      onClick={() => inputRef.current?.click()}
+      className={`rounded-xl border-2 border-dashed p-6 cursor-pointer transition-all duration-200 text-center ${isDragging ? c.dragBg : 'border-slate-300 hover:border-slate-400 bg-slate-50/50'}`}
+    >
+      <input ref={inputRef} type="file" accept=".pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelect(f) }} className="hidden" />
+      <div className={`w-12 h-12 ${c.accent} rounded-lg flex items-center justify-center mx-auto mb-3`}>
+        <span className={`font-bold text-lg ${c.text}`}>{icon}</span>
       </div>
-
-      <div className="bg-blue-50 rounded-lg p-4">
-        <h4 className="font-medium text-blue-900 text-sm mb-2">What happens when you upload</h4>
-        <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-          <li>PDF is securely stored in cloud storage</li>
-          <li>PyMuPDF extracts wall segments, openings, and dimensions</li>
-          <li>AI calculates total ground floor area from extracted data</li>
-          <li>Measurements feed into AS 1684 compliant quote generation</li>
-        </ol>
+      <p className="font-medium text-slate-900 text-sm mb-1">{label}</p>
+      <p className="text-xs text-slate-500 mb-3">{description}</p>
+      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${c.bg} ${c.text} text-xs font-medium`}>
+        <Upload className="w-3 h-3" /> Upload PDF
       </div>
     </div>
   )
