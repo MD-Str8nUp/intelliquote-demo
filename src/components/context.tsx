@@ -112,6 +112,7 @@ interface AppContextType {
   extractedMeasurements: ExtractedMeasurements
   setExtractedMeasurements: (m: ExtractedMeasurements | ((prev: ExtractedMeasurements) => ExtractedMeasurements)) => void
   quotes: Quote[]
+  addQuote: (quote: Quote) => void
   uploadedFiles: UploadedFile[]
   addUploadedFile: (file: UploadedFile) => void
   updateUploadedFile: (id: string, updates: Partial<UploadedFile>) => void
@@ -271,7 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState('dashboard')
   const [currentQuote, setCurrentQuote] = useState<Quote | null>(null)
   const [extractedMeasurements, setExtractedMeasurements] = useState<ExtractedMeasurements>(DEFAULT_MEASUREMENTS)
-  const [quotes] = useState<Quote[]>(SAMPLE_QUOTES)
+  const [quotes, setQuotes] = useState<Quote[]>(SAMPLE_QUOTES)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [currentStep, setCurrentStep] = useState(0)
   const [answers, setAnswers] = useState<FlowchartAnswer[]>([])
@@ -282,6 +283,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [cuttingList, setCuttingList] = useState<LineItem[]>([])
   const [labourItems, setLabourItems] = useState<LineItem[]>([])
   const [extractionNotes, setExtractionNotes] = useState('')
+
+  const addQuote = useCallback((quote: Quote) => {
+    setQuotes(prev => [quote, ...prev])
+  }, [])
 
   const addUploadedFile = useCallback((file: UploadedFile) => {
     setUploadedFiles(prev => [...prev, file])
@@ -314,7 +319,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentPage, setCurrentPage,
       currentQuote, setCurrentQuote,
       extractedMeasurements, setExtractedMeasurements,
-      quotes,
+      quotes, addQuote,
       uploadedFiles, addUploadedFile, updateUploadedFile, removeUploadedFile,
       currentStep, answers, setCurrentStep, addAnswer,
       sidebarCollapsed, toggleSidebar,

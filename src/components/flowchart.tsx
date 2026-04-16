@@ -317,6 +317,7 @@ export function FlowchartWizard() {
     setLabourItems,
     extractionNotes,
     setExtractionNotes,
+    addQuote,
   } = useAppContext()
 
   const [planFiles, setPlanFiles] = useState<PlanFile[]>([])
@@ -568,6 +569,7 @@ export function FlowchartWizard() {
     }
 
     setCurrentQuote(newQuote)
+    addQuote(newQuote)
     setWizardPhase('done')
   }
 
