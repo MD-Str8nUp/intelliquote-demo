@@ -72,7 +72,7 @@ export function FlowchartWizard() {
     extracting: boolean
     uploaded: boolean
     storagePath: string | null
-    extractedData: { walls?: number; openings?: number; area?: number; bracingZones?: number; lintels?: number; tieDowns?: number } | null
+    extractedData: Record<string, number | string> | null
     error: string | null
   }
   const [planFiles, setPlanFiles] = useState<PlanFile[]>([])
@@ -126,26 +126,50 @@ export function FlowchartWizard() {
 
       setPlanFiles(prev => prev.map(p => p.id === fileId ? { ...p, uploading: false, extracting: true, uploaded: true, storagePath: result.path } : p))
 
-      // Simulate extraction (different data per plan type)
-      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1500))
+      // Call real extraction API
+      const extractResponse = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storagePath: result.path, planType }),
+      })
 
-      // Simulate realistic extraction data
-      const area = 120 + Math.round(Math.random() * 200)
-      const extractedData = planType === 'architectural'
-        ? {
-            area,
-            wallLinealMetres: Math.round(area * 0.55 + Math.random() * 20),   // LM of walls
-            floorSqMetres: area,                                                // m2 of floor
-            roofSqMetres: Math.round(area * 1.15 + Math.random() * 15),        // m2 of roof (pitch adds ~15%)
-            openings: 8 + Math.round(Math.random() * 8),
-            wallSegments: 18 + Math.round(Math.random() * 12),
+      const extractResult = await extractResponse.json()
+
+      let extractedData: Record<string, number | string> | null = null
+
+      if (extractResult.success && extractResult.extractedData) {
+        const d = extractResult.extractedData
+        if (planType === 'architectural') {
+          extractedData = {
+            area: Math.round(Number(d.floorSqMetres) || 0),
+            wallLinealMetres: Math.round(Number(d.wallLinealMetres) || 0),
+            floorSqMetres: Math.round(Number(d.floorSqMetres) || 0),
+            roofSqMetres: Math.round(Number(d.roofSqMetres) || 0),
+            openings: Math.round(Number(d.openings) || 0),
+            wallSegments: Math.round(Number(d.wallSegments) || 0),
+            confidence: d.confidence || 'medium',
+            notes: d.notes || '',
+            method: extractResult.method || 'text-extraction',
           }
-        : {
-            bracingZones: 4 + Math.round(Math.random() * 4),
-            lintels: 6 + Math.round(Math.random() * 8),
-            tieDowns: 8 + Math.round(Math.random() * 12),
-            bracingWallLM: Math.round(area * 0.3 + Math.random() * 10),       // LM of bracing walls
+        } else {
+          extractedData = {
+            bracingZones: Math.round(Number(d.bracingZones) || 0),
+            lintels: Math.round(Number(d.lintels) || 0),
+            tieDowns: Math.round(Number(d.tieDowns) || 0),
+            bracingWallLM: Math.round(Number(d.bracingWallLM) || 0),
+            confidence: d.confidence || 'medium',
+            notes: d.notes || '',
+            method: extractResult.method || 'text-extraction',
           }
+        }
+      } else {
+        // Extraction failed or no data - show error but don't block
+        setPlanFiles(prev => prev.map(p => p.id === fileId ? {
+          ...p, extracting: false,
+          error: extractResult.warning || extractResult.error || 'Could not extract data from this PDF. Try a vector PDF from AutoCAD/Revit.',
+        } : p))
+        return
+      }
 
       setPlanFiles(prev => {
         const updated = prev.map(p => p.id === fileId ? { ...p, extracting: false, extractedData } : p)
@@ -153,7 +177,7 @@ export function FlowchartWizard() {
         const allDone = updated.every(p => !p.uploading && !p.extracting && p.extractedData)
         if (allDone) {
           const archFile = updated.find(p => p.type === 'architectural')
-          const area = archFile?.extractedData?.area || 185
+          const area = Number(archFile?.extractedData?.area) || 185
           setCombinedArea(area)
           setExtractionComplete(true)
           addAnswer({ stepId: 'upload-plans', value: String(area), answeredAt: new Date().toISOString() })
@@ -360,7 +384,7 @@ function PlanUploadStep({
   onFileSelect,
   onRemove,
 }: {
-  planFiles: { id: string; file: File; type: 'architectural' | 'structural'; uploading: boolean; extracting: boolean; uploaded: boolean; storagePath: string | null; extractedData: Record<string, number> | null; error: string | null }[]
+  planFiles: { id: string; file: File; type: 'architectural' | 'structural'; uploading: boolean; extracting: boolean; uploaded: boolean; storagePath: string | null; extractedData: Record<string, number | string> | null; error: string | null }[]
   extractionComplete: boolean
   combinedArea: number | null
   onFileSelect: (file: File, type: 'architectural' | 'structural') => void
@@ -466,7 +490,25 @@ function PlanUploadStep({
                   </div>
                 </div>
               )}
-              <p className="text-xs text-green-700 mt-3">
+              {/* Confidence + method */}
+              <div className="flex items-center gap-3 mt-3 text-xs">
+                {archFile?.extractedData?.confidence && (
+                  <span className={`px-2 py-0.5 rounded-full font-medium ${
+                    archFile.extractedData.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                    archFile.extractedData.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {String(archFile.extractedData.confidence)} confidence
+                  </span>
+                )}
+                {archFile?.extractedData?.method && (
+                  <span className="text-slate-500">via {String(archFile.extractedData.method)}</span>
+                )}
+              </div>
+              {archFile?.extractedData?.notes && (
+                <p className="text-xs text-slate-500 mt-1 italic">{String(archFile.extractedData.notes)}</p>
+              )}
+              <p className="text-xs text-green-700 mt-2">
                 {planFiles.length === 2
                   ? 'Both architectural and structural plans analysed. Cross-referenced for AS 1684 compliance.'
                   : 'Plan analysed. Upload both plan types for full cross-referencing.'}
@@ -507,7 +549,7 @@ function PlanSlot({
   description: string
   icon: string
   colour: 'blue' | 'purple'
-  planFile: { file: File; uploading: boolean; extracting: boolean; uploaded: boolean; extractedData: Record<string, number> | null; error: string | null } | null
+  planFile: { file: File; uploading: boolean; extracting: boolean; uploaded: boolean; extractedData: Record<string, number | string> | null; error: string | null } | null
   inputRef: React.RefObject<HTMLInputElement>
   onFileSelect: (file: File) => void
   onRemove: () => void
