@@ -52,19 +52,6 @@ const STEPS: FlowchartStep[] = [
     ],
   },
   {
-    id: 'soil-type',
-    question: 'What is the soil classification?',
-    description: 'Found in your geotechnical report',
-    type: 'single-select',
-    options: [
-      { id: 'a', label: 'Class A', value: 'A', description: 'Sand/rock - most stable' },
-      { id: 's', label: 'Class S', value: 'S', description: 'Slightly reactive clay' },
-      { id: 'm', label: 'Class M', value: 'M', description: 'Moderately reactive clay (most common in Sydney)' },
-      { id: 'h1', label: 'Class H1', value: 'H1', description: 'Highly reactive clay' },
-      { id: 'h2', label: 'Class H2', value: 'H2', description: 'Very highly reactive clay' },
-    ],
-  },
-  {
     id: 'upload-plans',
     question: 'Upload your plans',
     description: 'Upload PDF plans and IntelliQuote will extract the total ground floor area automatically',
@@ -178,7 +165,7 @@ export function FlowchartWizard() {
     const roofMaterial = (answers.find(a => a.stepId === 'roof-material')?.value as string) || 'tile'
     const storeys = Number(answers.find(a => a.stepId === 'storeys')?.value || 1) as 1 | 2
     const floorArea = combinedArea || 185
-    const soilType = (answers.find(a => a.stepId === 'soil-type')?.value as string) || 'M'
+    const soilType = 'M' // Determined from engineering report, not carpenter's scope
 
     const baseCostPerSqm = roofMaterial === 'tile' ? 165 : 145
     const storeyMultiplier = storeys === 2 ? 1.8 : 1
