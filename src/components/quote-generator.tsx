@@ -2,7 +2,8 @@
 
 import React, { useState, useRef } from 'react'
 import { useAppContext, Quote } from './context'
-import { Pencil, Download, FileText, Ruler, Hammer, Calculator, ClipboardList, Palette, Image } from 'lucide-react'
+import { Pencil, Download, FileText, Ruler, Hammer, Calculator, ClipboardList, Palette, Upload as UploadIcon, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 // Editable measurement row
 function EditableRow({ label, value, unit, onChange }: { label: string; value: number; unit: string; onChange: (v: number) => void }) {
@@ -439,9 +440,8 @@ export function QuoteGenerator() {
                 <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Branding</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Logo URL</label>
-                    <input type="text" value={brandLogoUrl} onChange={e => setBrandLogoUrl(e.target.value)} placeholder="https://example.com/logo.png" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-sm" />
-                    <p className="text-xs text-slate-400 mt-1">Paste a URL to your logo image</p>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Logo</label>
+                    <LogoUpload logoUrl={brandLogoUrl} onUploaded={setBrandLogoUrl} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Primary Colour</label>
@@ -518,6 +518,67 @@ export function QuoteGenerator() {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LogoUpload({ logoUrl, onUploaded }: { logoUrl: string; onUploaded: (url: string) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const path = `logos/${Date.now()}-${safeName}`
+
+    const { data, error } = await supabase.storage
+      .from('intelliquote-branding')
+      .upload(path, file, { cacheControl: '3600', upsert: false })
+
+    if (error) {
+      console.error('Logo upload error:', error)
+      setUploading(false)
+      return
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('intelliquote-branding')
+      .getPublicUrl(data.path)
+
+    onUploaded(urlData.publicUrl)
+    setUploading(false)
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-4">
+        {/* Preview */}
+        <div className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden bg-slate-50 flex-shrink-0">
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+          ) : (
+            <span className="text-slate-400 text-xs text-center">No logo</span>
+          )}
+        </div>
+
+        <div className="flex-1">
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onChange={handleUpload} className="hidden" />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="px-3 py-1.5 bg-slate-100 text-slate-700 font-medium text-xs rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1.5"
+          >
+            {uploading ? <><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</> : <><UploadIcon className="w-3 h-3" /> Upload Logo</>}
+          </button>
+          <p className="text-xs text-slate-400 mt-1">PNG, JPG, SVG or WebP. Max 2MB.</p>
+          {logoUrl && (
+            <button onClick={() => onUploaded('')} className="text-xs text-red-500 hover:text-red-600 mt-1">Remove logo</button>
           )}
         </div>
       </div>
