@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 
-// Allow up to 60s for PDF download + Claude analysis
-export const maxDuration = 60
+// Allow up to 300s (5 min) for large PDF download + Claude analysis
+export const maxDuration = 300
 
 const SUPABASE_URL = 'https://inrzfybiqkdkmyflufci.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlucnpmeWJpcWtka215Zmx1ZmNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAzMTI4NzksImV4cCI6MjA3NTg4ODg3OX0.WWIxW6So9pIwI2gnwtMNbYAGa9XLyxkB0wfJrdeb4Sc'
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     const anthropic = getAnthropic()
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
