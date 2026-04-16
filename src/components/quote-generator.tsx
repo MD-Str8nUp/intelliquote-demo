@@ -153,7 +153,9 @@ export function QuoteGenerator() {
   const cuttingListTotal = cuttingList.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0)
   const labourTotal = labourItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0)
 
-  const subtotalExGST = measurementsSubtotal + labourTotal
+  const steelPostTotal = (m.steelPosts || 0) * (m.steelPostRate || 0)
+  const grandMeasurements = measurementsSubtotal + steelPostTotal
+  const subtotalExGST = grandMeasurements  // Labour is factored into m² rates, NOT added separately
   const gst = subtotalExGST * 0.10
   const totalIncGST = subtotalExGST + gst
 
@@ -178,15 +180,8 @@ export function QuoteGenerator() {
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
-    // Build cutting list rows for PDF
-    const cuttingRows = cuttingList.filter(i => i.description).map(i =>
-      `<tr><td>${i.description}</td><td class="right">${fmtInt(i.quantity)} ${i.unit}</td><td class="right">$${fmt(i.unitPrice)}</td><td class="right bold">$${fmt(i.quantity * i.unitPrice)}</td></tr>`
-    ).join('')
-
-    // Build labour rows for PDF
-    const labourRows = labourItems.filter(i => i.description).map(i =>
-      `<tr><td>${i.description}</td><td class="right">${fmtInt(i.quantity)} ${i.unit}</td><td class="right">$${fmt(i.unitPrice)}</td><td class="right bold">$${fmt(i.quantity * i.unitPrice)}</td></tr>`
-    ).join('')
+    // Labour and cutting list are NOT included in client-facing PDF
+    // They are internal reference only, available in their respective tabs
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -308,36 +303,20 @@ export function QuoteGenerator() {
           </div>
         </div>
 
-        ${cuttingRows ? `
-        <div class="page-break"></div>
-        <h2>Cutting List (Internal Reference)</h2>
-        <table>
-          <thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount</th></tr></thead>
-          <tbody>${cuttingRows}</tbody>
-          <tfoot><tr><td colspan="3" style="text-align:right;font-weight:600;padding-top:10px;">Cutting List Total</td><td class="right bold" style="padding-top:10px;">$${fmt(cuttingListTotal)}</td></tr></tfoot>
-        </table>
-        ` : ''}
-
-        ${labourRows ? `
-        <h2>Labour</h2>
-        <table>
-          <thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount</th></tr></thead>
-          <tbody>${labourRows}</tbody>
-          <tfoot><tr><td colspan="3" style="text-align:right;font-weight:600;padding-top:10px;">Labour Total</td><td class="right bold" style="padding-top:10px;">$${fmt(labourTotal)}</td></tr></tfoot>
-        </table>
-        ` : ''}
-
         <!-- Financial Summary -->
         <div class="summary-box">
           <h2 style="border: none; margin-top: 0; padding-bottom: 10px;">Quote Summary</h2>
-          <div class="summary-row"><span>Measurements Subtotal</span><span>$${fmt(measurementsSubtotal)}</span></div>
-          <div class="summary-row"><span>Labour</span><span>$${fmt(labourTotal)}</span></div>
+          <div class="summary-row"><span>Ground Floor Walls (${fmtInt(m.groundFloorWallLM)} LM x $${fmtInt(m.wallRatePerLM)})</span><span>$${fmt(groundWallTotal)}</span></div>
+          ${m.firstFloorWallLM > 0 ? `<div class="summary-row"><span>First Floor Walls (${fmtInt(m.firstFloorWallLM)} LM x $${fmtInt(m.wallRatePerLM)})</span><span>$${fmt(firstWallTotal)}</span></div>` : ''}
+          <div class="summary-row"><span>Ground Floor Area (${fmtInt(m.groundFloorAreaM2)} m&sup2; x $${fmtInt(m.floorRatePerM2)})</span><span>$${fmt(groundFloorTotal)}</span></div>
+          ${m.firstFloorAreaM2 > 0 ? `<div class="summary-row"><span>First Floor Area (${fmtInt(m.firstFloorAreaM2)} m&sup2; x $${fmtInt(m.floorRatePerM2)})</span><span>$${fmt(firstFloorTotal)}</span></div>` : ''}
+          <div class="summary-row"><span>Roof Area (${fmtInt(m.roofSqMetres)} m&sup2; x $${fmtInt(m.roofRatePerM2)})</span><span>$${fmt(roofTotal)}</span></div>
+          ${m.steelTonnage > 0 ? `<div class="summary-row"><span>Steel (${fmtInt(m.steelTonnage)} T x $${fmtInt(m.steelRatePerT)})</span><span>$${fmt(steelTotal)}</span></div>` : ''}
+          ${(m.steelPosts || 0) > 0 ? `<div class="summary-row"><span>Steel Posts (${fmtInt(m.steelPosts)} x $${fmtInt(m.steelPostRate)})</span><span>$${fmt(steelPostTotal)}</span></div>` : ''}
           <div class="summary-row sub"><span>Subtotal (ex GST)</span><span>$${fmt(subtotalExGST)}</span></div>
           <div class="summary-row"><span>GST (10%)</span><span>$${fmt(gst)}</span></div>
           <div class="summary-total"><span>TOTAL (inc GST)</span><span>$${fmt(totalIncGST)}</span></div>
         </div>
-
-        ${cuttingListTotal > 0 ? `<div class="ref-note">Cutting list total: $${fmt(cuttingListTotal)} (internal reference only, not included in quote total)</div>` : ''}
 
         <!-- Terms -->
         <div class="terms">
@@ -659,11 +638,11 @@ export function QuoteGenerator() {
               ════════════════════════════════════════════════════════════ */}
           {activeTab === 'summary' && (
             <div className="max-w-2xl mx-auto space-y-6">
-              <p className="text-sm text-slate-500">Professional financial summary. All figures calculated from your measurements and labour items.</p>
+              <p className="text-sm text-slate-500">Quote summary based on measurement rates. Labour is factored into the m² rates.</p>
 
-              {/* Section 1: Measurement-Based Pricing */}
+              {/* Measurement-Based Pricing */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-3">Measurement-Based Pricing</h3>
+                <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-3">Quote Breakdown</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -681,96 +660,66 @@ export function QuoteGenerator() {
                         <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.wallRatePerLM)}/LM</td>
                         <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(groundWallTotal)}</td>
                       </tr>
-                      <tr className="border-b border-slate-100">
-                        <td className="px-3 py-2.5 text-sm text-slate-700">First Floor Walls</td>
-                        <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.firstFloorWallLM)} LM</td>
-                        <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.wallRatePerLM)}/LM</td>
-                        <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(firstWallTotal)}</td>
-                      </tr>
+                      {m.firstFloorWallLM > 0 && (
+                        <tr className="border-b border-slate-100">
+                          <td className="px-3 py-2.5 text-sm text-slate-700">First Floor Walls</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.firstFloorWallLM)} LM</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.wallRatePerLM)}/LM</td>
+                          <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(firstWallTotal)}</td>
+                        </tr>
+                      )}
                       <tr className="border-b border-slate-100">
                         <td className="px-3 py-2.5 text-sm text-slate-700">Ground Floor Area</td>
                         <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.groundFloorAreaM2)} m²</td>
                         <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.floorRatePerM2)}/m²</td>
                         <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(groundFloorTotal)}</td>
                       </tr>
-                      <tr className="border-b border-slate-100">
-                        <td className="px-3 py-2.5 text-sm text-slate-700">First Floor Area</td>
-                        <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.firstFloorAreaM2)} m²</td>
-                        <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.floorRatePerM2)}/m²</td>
-                        <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(firstFloorTotal)}</td>
-                      </tr>
+                      {m.firstFloorAreaM2 > 0 && (
+                        <tr className="border-b border-slate-100">
+                          <td className="px-3 py-2.5 text-sm text-slate-700">First Floor Area</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.firstFloorAreaM2)} m²</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.floorRatePerM2)}/m²</td>
+                          <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(firstFloorTotal)}</td>
+                        </tr>
+                      )}
                       <tr className="border-b border-slate-100">
                         <td className="px-3 py-2.5 text-sm text-slate-700">Roof Area</td>
                         <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.roofSqMetres)} m²</td>
                         <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.roofRatePerM2)}/m²</td>
                         <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(roofTotal)}</td>
                       </tr>
-                      <tr className="border-b border-slate-100">
-                        <td className="px-3 py-2.5 text-sm text-slate-700">Steel</td>
-                        <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.steelTonnage)} T</td>
-                        <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.steelRatePerT)}/T</td>
-                        <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(steelTotal)}</td>
-                      </tr>
+                      {m.steelTonnage > 0 && (
+                        <tr className="border-b border-slate-100">
+                          <td className="px-3 py-2.5 text-sm text-slate-700">Steel Tonnage</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.steelTonnage)} T</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.steelRatePerT)}/T</td>
+                          <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(steelTotal)}</td>
+                        </tr>
+                      )}
+                      {(m.steelPosts || 0) > 0 && (
+                        <tr className="border-b border-slate-100">
+                          <td className="px-3 py-2.5 text-sm text-slate-700">Steel Posts</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(m.steelPosts)} EA</td>
+                          <td className="px-3 py-2.5 text-sm text-right text-slate-600">${fmtInt(m.steelPostRate)}/EA</td>
+                          <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(steelPostTotal)}</td>
+                        </tr>
+                      )}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-slate-300">
-                        <td colSpan={3} className="px-3 py-3 text-right text-sm font-bold text-slate-900">Measurements Subtotal</td>
-                        <td className="px-3 py-3 text-right font-bold text-slate-900">${fmt(measurementsSubtotal)}</td>
+                        <td colSpan={3} className="px-3 py-3 text-right text-sm font-bold text-slate-900">Subtotal (ex GST)</td>
+                        <td className="px-3 py-3 text-right font-bold text-slate-900">${fmt(subtotalExGST)}</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
               </div>
 
-              {/* Section 2: Labour */}
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-3">Labour</h3>
-                {labourItems.length === 0 ? (
-                  <p className="text-sm text-slate-400 italic">No labour items added.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b-2 border-slate-200">
-                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Item</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Qty x Rate</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {labourItems.filter(i => i.description).map(item => (
-                          <tr key={item.id} className="border-b border-slate-100">
-                            <td className="px-3 py-2.5 text-sm text-slate-700">{item.description}</td>
-                            <td className="px-3 py-2.5 text-sm text-right text-slate-600">{fmtInt(item.quantity)} {item.unit} x ${fmt(item.unitPrice)}</td>
-                            <td className="px-3 py-2.5 text-sm text-right font-medium text-slate-900">${fmt(item.quantity * item.unitPrice)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-slate-300">
-                          <td colSpan={2} className="px-3 py-3 text-right text-sm font-bold text-slate-900">Labour Subtotal</td>
-                          <td className="px-3 py-3 text-right font-bold text-slate-900">${fmt(labourTotal)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Section 3: Grand Total */}
+              {/* Grand Total */}
               <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-6 space-y-3">
-                <h3 className="text-sm font-semibold text-amber-900 uppercase tracking-wider mb-4">Grand Total</h3>
                 <div className="flex justify-between py-2">
-                  <span className="text-slate-700">Measurements</span>
-                  <span className="font-medium text-slate-900">${fmt(measurementsSubtotal)}</span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-slate-700">Labour</span>
-                  <span className="font-medium text-slate-900">${fmt(labourTotal)}</span>
-                </div>
-                <div className="flex justify-between py-3 border-t border-amber-300">
-                  <span className="font-bold text-slate-900">Subtotal (ex GST)</span>
-                  <span className="font-bold text-slate-900">${fmt(subtotalExGST)}</span>
+                  <span className="text-slate-700">Subtotal (ex GST)</span>
+                  <span className="font-medium text-slate-900">${fmt(subtotalExGST)}</span>
                 </div>
                 <div className="flex justify-between py-2">
                   <span className="text-slate-600">GST (10%)</span>
@@ -782,12 +731,9 @@ export function QuoteGenerator() {
                 </div>
               </div>
 
-              {/* Reference note for cutting list */}
-              {cuttingListTotal > 0 && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                  <strong>Reference:</strong> Cutting list total: ${fmt(cuttingListTotal)} (internal reference only, not included in client quote)
-                </div>
-              )}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500">
+                Labour costs are factored into the per-unit rates above. Cutting list and labour breakdowns are available in their respective tabs for internal reference.
+              </div>
             </div>
           )}
 
