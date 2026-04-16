@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from 'react'
 import { useAppContext, FlowchartStep, Quote } from './context'
-import { CheckCircle, Upload, FileText, X, Loader2 } from 'lucide-react'
+import { CheckCircle, Upload, FileText, X, Loader2, Pencil } from 'lucide-react'
 import { uploadPlan } from '@/lib/supabase'
 
 const STEPS: FlowchartStep[] = [
@@ -28,71 +28,64 @@ const STEPS: FlowchartStep[] = [
     ],
   },
   {
-    id: 'wind-class',
-    question: 'What is the wind classification?',
-    description: 'Check your engineering drawings or council DA',
-    type: 'single-select',
-    options: [
-      { id: 'n1', label: 'N1', value: 'N1', description: 'Non-cyclonic, low wind' },
-      { id: 'n2', label: 'N2', value: 'N2', description: 'Non-cyclonic, moderate wind (most of Sydney)' },
-      { id: 'n3', label: 'N3', value: 'N3', description: 'Non-cyclonic, high wind' },
-      { id: 'n4', label: 'N4', value: 'N4', description: 'Non-cyclonic, very high wind' },
-      { id: 'c1', label: 'C1', value: 'C1', description: 'Cyclonic region' },
-      { id: 'c2', label: 'C2', value: 'C2', description: 'Cyclonic region' },
-    ],
-  },
-  {
-    id: 'roof-material',
-    question: 'What roofing material?',
-    description: 'This affects load calculations and bracing requirements',
-    type: 'single-select',
-    options: [
-      { id: 'tile', label: 'Concrete/Clay Tile', value: 'tile', description: 'Heavier load, more bracing required' },
-      { id: 'metal', label: 'Metal/Colorbond', value: 'metal', description: 'Lighter load, less bracing' },
-    ],
-  },
-  {
     id: 'upload-plans',
     question: 'Upload your plans',
-    description: 'Upload PDF plans and IntelliQuote will extract the total ground floor area automatically',
+    description: 'Upload architectural and structural PDFs. IntelliQuote will extract key measurements.',
     type: 'file-upload',
     validation: { required: true },
   },
 ]
 
+// The editable measurements that come from extraction
+interface ExtractedMeasurements {
+  wallLinealMetres: number
+  floorSqMetres: number
+  roofSqMetres: number
+  steelTonnage: number
+}
+
+interface PlanFile {
+  id: string
+  file: File
+  type: 'architectural' | 'structural'
+  uploading: boolean
+  extracting: boolean
+  uploaded: boolean
+  storagePath: string | null
+  extractedData: Record<string, number | string> | null
+  error: string | null
+}
+
 export function FlowchartWizard() {
   const { currentStep, setCurrentStep, answers, addAnswer, setCurrentQuote, setCurrentPage } = useAppContext()
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [generated, setGenerated] = useState(false)
-  interface PlanFile {
-    id: string
-    file: File
-    type: 'architectural' | 'structural'
-    uploading: boolean
-    extracting: boolean
-    uploaded: boolean
-    storagePath: string | null
-    extractedData: Record<string, number | string> | null
-    error: string | null
-  }
   const [planFiles, setPlanFiles] = useState<PlanFile[]>([])
   const [extractionComplete, setExtractionComplete] = useState(false)
-  const [combinedArea, setCombinedArea] = useState<number | null>(null)
+
+  // Phase: 'wizard' -> 'review' -> 'generating' -> 'done'
+  const [phase, setPhase] = useState<'wizard' | 'review' | 'generating' | 'done'>('wizard')
+
+  // Editable measurements (populated from extraction, user can override)
+  const [measurements, setMeasurements] = useState<ExtractedMeasurements>({
+    wallLinealMetres: 0, floorSqMetres: 0, roofSqMetres: 0, steelTonnage: 0,
+  })
+
+  // Additional context the user can inject to steer the AI
+  const [additionalContext, setAdditionalContext] = useState('')
 
   const currentStepData = STEPS[currentStep]
   const progress = ((currentStep + 1) / STEPS.length) * 100
   const currentAnswer = answers.find(a => a.stepId === currentStepData?.id)
 
-  // For the upload step, consider it "answered" once at least one file is extracted
   const isStepAnswered = currentStepData?.id === 'upload-plans'
-    ? extractionComplete && combinedArea !== null
+    ? extractionComplete
     : !!currentAnswer
 
   const handleNext = () => {
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(currentStep + 1)
     } else {
-      generateQuote()
+      // Go to review phase instead of generating immediately
+      setPhase('review')
     }
   }
 
@@ -126,7 +119,6 @@ export function FlowchartWizard() {
 
       setPlanFiles(prev => prev.map(p => p.id === fileId ? { ...p, uploading: false, extracting: true, uploaded: true, storagePath: result.path } : p))
 
-      // Call real extraction API
       const extractResponse = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,48 +131,37 @@ export function FlowchartWizard() {
 
       if (extractResult.success && extractResult.extractedData) {
         const d = extractResult.extractedData
+        extractedData = { ...d }
+
+        // Auto-populate editable measurements from architectural extraction
         if (planType === 'architectural') {
-          extractedData = {
-            area: Math.round(Number(d.floorSqMetres) || 0),
-            wallLinealMetres: Math.round(Number(d.wallLinealMetres) || 0),
-            floorSqMetres: Math.round(Number(d.floorSqMetres) || 0),
-            roofSqMetres: Math.round(Number(d.roofSqMetres) || 0),
-            openings: Math.round(Number(d.openings) || 0),
-            wallSegments: Math.round(Number(d.wallSegments) || 0),
-            confidence: d.confidence || 'medium',
-            notes: d.notes || '',
-            method: extractResult.method || 'text-extraction',
-          }
-        } else {
-          extractedData = {
-            bracingZones: Math.round(Number(d.bracingZones) || 0),
-            lintels: Math.round(Number(d.lintels) || 0),
-            tieDowns: Math.round(Number(d.tieDowns) || 0),
-            bracingWallLM: Math.round(Number(d.bracingWallLM) || 0),
-            confidence: d.confidence || 'medium',
-            notes: d.notes || '',
-            method: extractResult.method || 'text-extraction',
-          }
+          setMeasurements(prev => ({
+            ...prev,
+            wallLinealMetres: Math.round(Number(d.wallLinealMetres) || prev.wallLinealMetres),
+            floorSqMetres: Math.round(Number(d.floorSqMetres) || prev.floorSqMetres),
+            roofSqMetres: Math.round(Number(d.roofSqMetres) || prev.roofSqMetres),
+          }))
+        }
+        if (planType === 'structural') {
+          setMeasurements(prev => ({
+            ...prev,
+            steelTonnage: Number(d.steelTonnage) ? Math.round(Number(d.steelTonnage) * 100) / 100 : prev.steelTonnage,
+          }))
         }
       } else {
-        // Extraction failed or no data - show error but don't block
         setPlanFiles(prev => prev.map(p => p.id === fileId ? {
           ...p, extracting: false,
-          error: extractResult.warning || extractResult.error || 'Could not extract data from this PDF. Try a vector PDF from AutoCAD/Revit.',
+          error: extractResult.warning || extractResult.error || 'Could not extract data. Try a vector PDF.',
         } : p))
         return
       }
 
       setPlanFiles(prev => {
         const updated = prev.map(p => p.id === fileId ? { ...p, extracting: false, extractedData } : p)
-        // Check if all files are done extracting
         const allDone = updated.every(p => !p.uploading && !p.extracting && p.extractedData)
         if (allDone) {
-          const archFile = updated.find(p => p.type === 'architectural')
-          const area = Number(archFile?.extractedData?.area) || 185
-          setCombinedArea(area)
           setExtractionComplete(true)
-          addAnswer({ stepId: 'upload-plans', value: String(area), answeredAt: new Date().toISOString() })
+          addAnswer({ stepId: 'upload-plans', value: 'extracted', answeredAt: new Date().toISOString() })
         }
         return updated
       })
@@ -192,92 +173,196 @@ export function FlowchartWizard() {
   const removePlanFile = useCallback((planType: 'architectural' | 'structural') => {
     setPlanFiles(prev => prev.filter(p => p.type !== planType))
     setExtractionComplete(false)
-    setCombinedArea(null)
   }, [])
 
   const generateQuote = async () => {
-    setIsGenerating(true)
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    setPhase('generating')
+    await new Promise(resolve => setTimeout(resolve, 2000))
 
-    const windClass = (answers.find(a => a.stepId === 'wind-class')?.value as string) || 'N2'
-    const roofMaterial = (answers.find(a => a.stepId === 'roof-material')?.value as string) || 'tile'
     const storeys = Number(answers.find(a => a.stepId === 'storeys')?.value || 1) as 1 | 2
-    const floorArea = combinedArea || 185
-    const soilType = 'M' // Determined from engineering report, not carpenter's scope
-
-    const baseCostPerSqm = roofMaterial === 'tile' ? 165 : 145
-    const storeyMultiplier = storeys === 2 ? 1.8 : 1
-    const windMultiplier = windClass === 'N3' || windClass === 'N4' ? 1.15 : windClass.startsWith('C') ? 1.3 : 1
-    const totalMaterials = Math.round(floorArea * baseCostPerSqm * storeyMultiplier * windMultiplier)
-    const labourTotal = Math.round(floorArea * 95 * storeyMultiplier)
+    const projectType = (answers.find(a => a.stepId === 'project-type')?.value as string) || 'new-build'
 
     const newQuote: Quote = {
       id: `quote-${Date.now()}`,
-      projectName: 'New Project Quote',
+      projectName: `${projectType.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} - ${measurements.floorSqMetres}m\u00b2`,
       clientName: 'CCC Group',
       address: 'Sydney NSW',
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
       status: 'draft',
-      totalAmount: totalMaterials + labourTotal,
+      totalAmount: 0,
       currency: 'AUD',
-      items: [
-        { id: 'gen-1', category: 'framing', description: '90x35 MGP10 Wall Studs @ 450mm centres', quantity: Math.round(floorArea * 1.2), unit: 'LM', unitPrice: 8.50, total: Math.round(floorArea * 1.2 * 8.50), as1684Reference: `Table 8.18 - ${windClass} Wind, ${roofMaterial === 'tile' ? 'Tile' : 'Metal'} Roof` },
-        { id: 'gen-2', category: 'framing', description: '90x45 MGP10 Top/Bottom Plates', quantity: Math.round(floorArea * 0.8), unit: 'LM', unitPrice: 12.00, total: Math.round(floorArea * 0.8 * 12) },
-        { id: 'gen-3', category: 'framing', description: '140x45 MGP12 Lintels', quantity: Math.round(floorArea * 0.15), unit: 'LM', unitPrice: 28.50, total: Math.round(floorArea * 0.15 * 28.50), as1684Reference: 'Table 7.5 - Lintel Spans' },
-        { id: 'gen-4', category: 'bracing', description: 'Structural Ply Bracing 2400x1200x7mm', quantity: Math.round(floorArea * 0.18), unit: 'EA', unitPrice: 85.00, total: Math.round(floorArea * 0.18 * 85), as1684Reference: 'Table 8.18 - Bracing Requirements' },
-        { id: 'gen-5', category: 'framing', description: `${storeys === 2 ? '240x45' : '190x45'} MGP12 ${storeys === 2 ? 'Floor Joists' : 'Rafters'} @ ${storeys === 2 ? '450' : '600'}mm`, quantity: Math.round(floorArea * 0.6), unit: 'LM', unitPrice: storeys === 2 ? 42.00 : 32.00, total: Math.round(floorArea * 0.6 * (storeys === 2 ? 42 : 32)) },
-        { id: 'gen-6', category: 'hardware', description: 'Framing Brackets, Connectors & Fixings Pack', quantity: 1, unit: 'EA', unitPrice: Math.round(totalMaterials * 0.08), total: Math.round(totalMaterials * 0.08) },
-        { id: 'gen-7', category: 'labour', description: `Framing Labour - ${storeys === 2 ? '3' : '2'} Carpenters`, quantity: Math.round(floorArea * (storeys === 2 ? 0.65 : 0.4)), unit: 'HR', unitPrice: 185.00, total: labourTotal },
-        { id: 'gen-8', category: 'other', description: 'Site Setup, Engineering & Waste', quantity: 1, unit: 'EA', unitPrice: Math.round(floorArea * 18), total: Math.round(floorArea * 18) },
-      ],
+      items: [],
       metadata: {
-        windClass,
-        soilType,
-        roofMaterial,
+        windClass: null,
+        soilType: null,
+        roofMaterial: null,
         buildingClass: '1a',
-        totalFloorArea: floorArea,
+        totalFloorArea: measurements.floorSqMetres,
         storeys,
       },
     }
 
     setCurrentQuote(newQuote)
-    setIsGenerating(false)
-    setGenerated(true)
+    setPhase('done')
   }
 
-  if (isGenerating) {
+  // === REVIEW PHASE: editable measurements before quote generation ===
+  if (phase === 'review') {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Review Extracted Data</h1>
+          <p className="text-slate-500 mt-1">Edit any values below before generating your quote. These measurements drive the entire quote.</p>
+        </div>
+
+        {/* Editable measurement cards */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-amber-500" /> Key Measurements
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Wall Lineal Metres (LM)</label>
+              <input
+                type="number"
+                value={measurements.wallLinealMetres || ''}
+                onChange={e => setMeasurements(prev => ({ ...prev, wallLinealMetres: Number(e.target.value) || 0 }))}
+                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                placeholder="0"
+              />
+              <p className="text-xs text-slate-400 mt-1">Total lineal metres of all walls (external + internal)</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Floor Area (m{'\u00b2'})</label>
+              <input
+                type="number"
+                value={measurements.floorSqMetres || ''}
+                onChange={e => setMeasurements(prev => ({ ...prev, floorSqMetres: Number(e.target.value) || 0 }))}
+                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                placeholder="0"
+              />
+              <p className="text-xs text-slate-400 mt-1">Total ground floor area</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Roof Area (m{'\u00b2'})</label>
+              <input
+                type="number"
+                value={measurements.roofSqMetres || ''}
+                onChange={e => setMeasurements(prev => ({ ...prev, roofSqMetres: Number(e.target.value) || 0 }))}
+                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                placeholder="0"
+              />
+              <p className="text-xs text-slate-400 mt-1">Including pitch and eaves</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Steel Tonnage (T)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={measurements.steelTonnage || ''}
+                onChange={e => setMeasurements(prev => ({ ...prev, steelTonnage: Number(e.target.value) || 0 }))}
+                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                placeholder="0"
+              />
+              <p className="text-xs text-slate-400 mt-1">Total steel required (beams, lintels, posts)</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Additional context to steer the AI */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">Additional Context</h2>
+          <p className="text-sm text-slate-500 mb-3">Add any notes to steer the quote. Site conditions, specific requirements, material preferences, access issues, anything the AI should factor in.</p>
+          <textarea
+            value={additionalContext}
+            onChange={e => setAdditionalContext(e.target.value)}
+            rows={4}
+            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-sm"
+            placeholder="e.g. Difficult access - crane required. Tile roof, N2 wind zone. Client wants MGP12 throughout. Second floor has cathedral ceiling..."
+          />
+        </div>
+
+        {/* Uploaded plans summary */}
+        {planFiles.length > 0 && (
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+            <p className="text-sm font-medium text-slate-700 mb-2">Uploaded Plans</p>
+            <div className="space-y-2">
+              {planFiles.map(pf => (
+                <div key={pf.id} className="flex items-center gap-3 text-sm">
+                  <FileText className="w-4 h-4 text-red-500" />
+                  <span className="text-slate-700">{pf.file.name}</span>
+                  <span className="text-slate-400">({pf.type})</span>
+                  {pf.extractedData?.confidence && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      pf.extractedData.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                      pf.extractedData.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>{String(pf.extractedData.confidence)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center justify-between">
+          <button onClick={() => { setPhase('wizard'); setCurrentStep(STEPS.length - 1) }} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
+            &larr; Back to Upload
+          </button>
+          <button
+            onClick={generateQuote}
+            disabled={measurements.wallLinealMetres === 0 && measurements.floorSqMetres === 0}
+            className={`px-8 py-3 font-semibold rounded-lg transition-colors ${
+              measurements.wallLinealMetres > 0 || measurements.floorSqMetres > 0
+                ? 'bg-amber-500 text-slate-900 hover:bg-amber-400'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            Generate Quote
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // === GENERATING PHASE ===
+  if (phase === 'generating') {
     return (
       <div className="max-w-3xl mx-auto text-center py-16">
         <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
           <span className="text-3xl">&#9881;&#65039;</span>
         </div>
         <h2 className="text-2xl font-semibold text-slate-900 mb-2">Generating Your Quote</h2>
-        <p className="text-slate-500 mb-6">Calculating materials to AS 1684 specifications...</p>
+        <p className="text-slate-500 mb-6">Using your measurements and context to build the quote...</p>
         <div className="max-w-xs mx-auto">
           <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
             <div className="h-full bg-amber-500 rounded-full animate-loading" style={{ animationDuration: '2s', animationIterationCount: 'infinite' }} />
           </div>
         </div>
-        <div className="mt-8 space-y-2 text-sm text-slate-400">
-          <p className="animate-pulse">Analysing wind loading requirements...</p>
-          <p className="animate-pulse" style={{ animationDelay: '0.5s' }}>Calculating bracing per AS 1684.2...</p>
-          <p className="animate-pulse" style={{ animationDelay: '1s' }}>Pricing materials at current rates...</p>
+        <div className="mt-6 text-sm text-slate-400 space-y-1">
+          <p>Walls: {measurements.wallLinealMetres} LM | Floor: {measurements.floorSqMetres} m{'\u00b2'} | Roof: {measurements.roofSqMetres} m{'\u00b2'} | Steel: {measurements.steelTonnage} T</p>
         </div>
       </div>
     )
   }
 
-  if (generated) {
+  // === DONE PHASE ===
+  if (phase === 'done') {
     return (
       <div className="max-w-3xl mx-auto text-center py-16">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <CheckCircle className="w-10 h-10 text-green-600" />
         </div>
         <h2 className="text-2xl font-semibold text-slate-900 mb-2">Quote Generated</h2>
-        <p className="text-slate-500 mb-6">Your AS 1684 compliant quote is ready for review.</p>
+        <p className="text-slate-500 mb-6">Your quote is ready for review.</p>
         <div className="flex items-center justify-center gap-4">
-          <button onClick={() => { setGenerated(false); setCurrentStep(0); setCurrentPage('view-quote') }} className="px-6 py-3 bg-amber-500 text-slate-900 font-semibold rounded-lg hover:bg-amber-400 transition-colors">
+          <button onClick={() => { setPhase('wizard'); setCurrentStep(0); setCurrentPage('view-quote') }} className="px-6 py-3 bg-amber-500 text-slate-900 font-semibold rounded-lg hover:bg-amber-400 transition-colors">
             View Quote
           </button>
           <button onClick={() => setCurrentPage('dashboard')} className="px-6 py-3 border border-slate-200 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors">
@@ -288,6 +373,7 @@ export function FlowchartWizard() {
     )
   }
 
+  // === WIZARD PHASE (steps 1-3) ===
   return (
     <div className="max-w-3xl mx-auto">
       {/* Progress */}
@@ -340,23 +426,11 @@ export function FlowchartWizard() {
             </div>
           )}
 
-          {currentStepData.type === 'number' && (
-            <input
-              type="number"
-              value={typeof currentAnswer?.value === 'number' ? currentAnswer.value : ''}
-              onChange={e => handleAnswer(parseFloat(e.target.value) || 0)}
-              min={currentStepData.validation?.min}
-              max={currentStepData.validation?.max}
-              className="w-full px-4 py-3 text-lg border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 placeholder:text-slate-400"
-              placeholder="Enter value..."
-            />
-          )}
-
           {currentStepData.type === 'file-upload' && (
             <PlanUploadStep
               planFiles={planFiles}
               extractionComplete={extractionComplete}
-              combinedArea={combinedArea}
+              measurements={measurements}
               onFileSelect={handleFileUpload}
               onRemove={removePlanFile}
             />
@@ -369,7 +443,7 @@ export function FlowchartWizard() {
             &larr; Back
           </button>
           <button onClick={handleNext} disabled={!isStepAnswered} className={`px-6 py-2 font-medium text-sm rounded-lg transition-colors ${isStepAnswered ? 'bg-amber-500 text-slate-900 hover:bg-amber-400' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
-            {currentStep === STEPS.length - 1 ? 'Generate Quote' : 'Continue \u2192'}
+            {currentStep === STEPS.length - 1 ? 'Review & Edit Measurements \u2192' : 'Continue \u2192'}
           </button>
         </div>
       </div>
@@ -377,16 +451,18 @@ export function FlowchartWizard() {
   )
 }
 
+// === PLAN UPLOAD STEP ===
+
 function PlanUploadStep({
   planFiles,
   extractionComplete,
-  combinedArea,
+  measurements,
   onFileSelect,
   onRemove,
 }: {
-  planFiles: { id: string; file: File; type: 'architectural' | 'structural'; uploading: boolean; extracting: boolean; uploaded: boolean; storagePath: string | null; extractedData: Record<string, number | string> | null; error: string | null }[]
+  planFiles: PlanFile[]
   extractionComplete: boolean
-  combinedArea: number | null
+  measurements: ExtractedMeasurements
   onFileSelect: (file: File, type: 'architectural' | 'structural') => void
   onRemove: (type: 'architectural' | 'structural') => void
 }) {
@@ -398,133 +474,47 @@ function PlanUploadStep({
 
   return (
     <div className="space-y-4">
-      {/* Two upload zones side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Architectural Plans */}
-        <PlanSlot
-          label="Architectural Plans"
-          description="Floor plans, elevations, sections"
-          icon="A"
-          colour="blue"
-          planFile={archFile || null}
-          inputRef={archRef}
-          onFileSelect={(f) => onFileSelect(f, 'architectural')}
-          onRemove={() => onRemove('architectural')}
-        />
-
-        {/* Structural Plans */}
-        <PlanSlot
-          label="Structural Plans"
-          description="Bracing, tie-downs, lintels, footings"
-          icon="S"
-          colour="purple"
-          planFile={structFile || null}
-          inputRef={structRef}
-          onFileSelect={(f) => onFileSelect(f, 'structural')}
-          onRemove={() => onRemove('structural')}
-        />
+        <PlanSlot label="Architectural Plans" description="Floor plans, elevations, sections" icon="A" colour="blue" planFile={archFile || null} inputRef={archRef} onFileSelect={(f) => onFileSelect(f, 'architectural')} onRemove={() => onRemove('architectural')} />
+        <PlanSlot label="Structural Plans" description="Bracing, tie-downs, lintels, steel" icon="S" colour="purple" planFile={structFile || null} inputRef={structRef} onFileSelect={(f) => onFileSelect(f, 'structural')} onRemove={() => onRemove('structural')} />
       </div>
 
-      {/* Combined extraction results */}
-      {extractionComplete && combinedArea && (
+      {/* Show extracted summary */}
+      {extractionComplete && (measurements.wallLinealMetres > 0 || measurements.floorSqMetres > 0) && (
         <div className="bg-green-50 rounded-xl border border-green-200 p-5">
           <div className="flex items-start gap-3">
             <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-semibold text-green-900 mb-3">Plan Analysis Complete</p>
-
-              {/* Key measurements - the numbers carpenters need */}
-              {archFile?.extractedData && (
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div className="bg-white rounded-lg p-3 border border-green-100">
-                    <p className="text-xs text-green-600 mb-1">Walls (lineal)</p>
-                    <p className="text-2xl font-bold text-slate-900">{archFile.extractedData.wallLinealMetres} <span className="text-sm font-medium text-slate-500">LM</span></p>
-                  </div>
-                  <div className="bg-white rounded-lg p-3 border border-green-100">
-                    <p className="text-xs text-green-600 mb-1">Floor Area</p>
-                    <p className="text-2xl font-bold text-slate-900">{archFile.extractedData.floorSqMetres} <span className="text-sm font-medium text-slate-500">m{'\u00b2'}</span></p>
-                  </div>
-                  <div className="bg-white rounded-lg p-3 border border-green-100">
-                    <p className="text-xs text-green-600 mb-1">Roof Area</p>
-                    <p className="text-2xl font-bold text-slate-900">{archFile.extractedData.roofSqMetres} <span className="text-sm font-medium text-slate-500">m{'\u00b2'}</span></p>
-                  </div>
-                </div>
-              )}
-
-              {/* Secondary details */}
+              <p className="font-semibold text-green-900 mb-3">Extraction Complete</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {archFile?.extractedData && (
-                  <>
-                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                      <p className="text-xs text-blue-600 mb-0.5">Wall Segments</p>
-                      <p className="text-lg font-bold text-slate-900">{archFile.extractedData.wallSegments}</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                      <p className="text-xs text-blue-600 mb-0.5">Openings</p>
-                      <p className="text-lg font-bold text-slate-900">{archFile.extractedData.openings}</p>
-                    </div>
-                  </>
-                )}
-                {structFile?.extractedData && (
-                  <>
-                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                      <p className="text-xs text-purple-600 mb-0.5">Bracing Zones</p>
-                      <p className="text-lg font-bold text-slate-900">{structFile.extractedData.bracingZones}</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                      <p className="text-xs text-purple-600 mb-0.5">Bracing Walls</p>
-                      <p className="text-lg font-bold text-slate-900">{structFile.extractedData.bracingWallLM} <span className="text-xs text-slate-500">LM</span></p>
-                    </div>
-                  </>
-                )}
-              </div>
-              {structFile?.extractedData && (
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                    <p className="text-xs text-purple-600 mb-0.5">Lintels</p>
-                    <p className="text-lg font-bold text-slate-900">{structFile.extractedData.lintels}</p>
-                  </div>
-                  <div className="bg-white rounded-lg p-2.5 border border-green-100">
-                    <p className="text-xs text-purple-600 mb-0.5">Tie-Down Points</p>
-                    <p className="text-lg font-bold text-slate-900">{structFile.extractedData.tieDowns}</p>
-                  </div>
+                <div className="bg-white rounded-lg p-3 border border-green-100">
+                  <p className="text-xs text-green-600 mb-1">Walls</p>
+                  <p className="text-xl font-bold text-slate-900">{measurements.wallLinealMetres} <span className="text-sm font-medium text-slate-500">LM</span></p>
                 </div>
-              )}
-              {/* Confidence + method */}
-              <div className="flex items-center gap-3 mt-3 text-xs">
-                {archFile?.extractedData?.confidence && (
-                  <span className={`px-2 py-0.5 rounded-full font-medium ${
-                    archFile.extractedData.confidence === 'high' ? 'bg-green-100 text-green-700' :
-                    archFile.extractedData.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {String(archFile.extractedData.confidence)} confidence
-                  </span>
-                )}
-                {archFile?.extractedData?.method && (
-                  <span className="text-slate-500">via {String(archFile.extractedData.method)}</span>
-                )}
+                <div className="bg-white rounded-lg p-3 border border-green-100">
+                  <p className="text-xs text-green-600 mb-1">Floor</p>
+                  <p className="text-xl font-bold text-slate-900">{measurements.floorSqMetres} <span className="text-sm font-medium text-slate-500">m{'\u00b2'}</span></p>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-green-100">
+                  <p className="text-xs text-green-600 mb-1">Roof</p>
+                  <p className="text-xl font-bold text-slate-900">{measurements.roofSqMetres} <span className="text-sm font-medium text-slate-500">m{'\u00b2'}</span></p>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-green-100">
+                  <p className="text-xs text-green-600 mb-1">Steel</p>
+                  <p className="text-xl font-bold text-slate-900">{measurements.steelTonnage} <span className="text-sm font-medium text-slate-500">T</span></p>
+                </div>
               </div>
-              {archFile?.extractedData?.notes && (
-                <p className="text-xs text-slate-500 mt-1 italic">{String(archFile.extractedData.notes)}</p>
-              )}
-              <p className="text-xs text-green-700 mt-2">
-                {planFiles.length === 2
-                  ? 'Both architectural and structural plans analysed. Cross-referenced for AS 1684 compliance.'
-                  : 'Plan analysed. Upload both plan types for full cross-referencing.'}
-              </p>
+              <p className="text-xs text-green-700 mt-3">You can edit these values on the next screen before generating your quote.</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Any file still processing */}
       {planFiles.some(p => p.extracting) && (
         <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
           <div className="space-y-2 text-sm text-amber-700">
-            <p className="animate-pulse">Reading PDF structure and identifying layers...</p>
-            <p className="animate-pulse" style={{ animationDelay: '0.5s' }}>Detecting wall segments, openings, and dimensions...</p>
-            <p className="animate-pulse" style={{ animationDelay: '1s' }}>Calculating ground floor area and structural requirements...</p>
+            <p className="animate-pulse">Reading PDF and extracting measurements...</p>
+            <p className="animate-pulse" style={{ animationDelay: '0.5s' }}>This may take 1-2 minutes for large plans...</p>
           </div>
         </div>
       )}
@@ -532,10 +522,10 @@ function PlanUploadStep({
       <div className="bg-blue-50 rounded-lg p-4">
         <h4 className="font-medium text-blue-900 text-sm mb-2">How it works</h4>
         <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-          <li>Upload architectural plans (floor area, walls, openings)</li>
-          <li>Upload structural plans (bracing, lintels, tie-downs)</li>
-          <li>IntelliQuote cross-references both for AS 1684 compliance</li>
-          <li>Accurate quote generated from real measurements</li>
+          <li>Upload architectural plans (wall LM, floor m{'\u00b2'}, roof m{'\u00b2'})</li>
+          <li>Upload structural plans (steel tonnage, bracing, lintels)</li>
+          <li>Review and edit extracted measurements</li>
+          <li>Add context to steer the quote</li>
         </ol>
       </div>
     </div>
@@ -549,7 +539,7 @@ function PlanSlot({
   description: string
   icon: string
   colour: 'blue' | 'purple'
-  planFile: { file: File; uploading: boolean; extracting: boolean; uploaded: boolean; extractedData: Record<string, number | string> | null; error: string | null } | null
+  planFile: PlanFile | null
   inputRef: React.RefObject<HTMLInputElement>
   onFileSelect: (file: File) => void
   onRemove: () => void

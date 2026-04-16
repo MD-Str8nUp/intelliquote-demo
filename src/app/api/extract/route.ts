@@ -57,8 +57,11 @@ Return ONLY a valid JSON object with these fields:
 {
   "bracingZones": <number of distinct bracing zones or bracing walls marked>,
   "bracingWallLM": <total lineal metres of bracing walls if measurable>,
+  "bracingZones": <number of distinct bracing zones or bracing walls marked>,
+  "bracingWallLM": <total lineal metres of bracing walls if measurable>,
   "lintels": <number of lintels shown in schedule or on drawings>,
   "tieDowns": <number of tie-down points marked>,
+  "steelTonnage": <estimated total steel tonnage (beams, lintels, posts, connectors) in metric tonnes. Look for steel member schedules, beam sizes (e.g. 200UB25, 150PFC), and steel post sizes. If not explicitly stated, estimate from member sizes and spans.>,
   "maxLintelSpan": <longest lintel opening span in mm if identifiable>,
   "windClassification": <wind class if stated anywhere, e.g. "N2">,
   "confidence": <"high" if schedules are clear, "medium" if partially readable, "low" if estimated>,
@@ -70,7 +73,9 @@ Rules:
 - Bracing walls often marked B1, B2 etc. or with kN/m ratings
 - Tie-downs noted as TD1, TD2 or specific connector types (MultiGrip, etc.)
 - Lintels noted with spans and member sizes (e.g. "2/90x45 MGP10 over 1800")
-- Australian standards: AS 1684.2, AS 4055 (wind), AS 2870 (footings)`
+- Steel members: look for UB, UC, PFC, SHS, RHS, CHS designations and calculate approximate tonnage
+- For steel tonnage: 200UB25 means ~25kg/m, multiply by length. Sum all steel members.
+- Australian standards: AS 1684.2, AS 4055 (wind), AS 2870 (footings), AS 4100 (steel)`
 
 export async function POST(request: NextRequest) {
   try {
