@@ -36,7 +36,9 @@ MEASUREMENT EXTRACTION RULES:
 - External wall perimeter = sum of all external wall lengths around the building footprint.
 - Internal walls = sum of all partition wall lengths shown on the floor plan.
 - For roof area: account for pitch (typically 22.5-25 degrees for tile, 10-15 for metal) and add eave overhangs (typically 450-600mm each side). Roof area = floor area / cos(pitch angle) + eave additions.
-- For multi-storey: measure EACH floor separately. Ground and first floor may have different footprints.
+- CRITICAL: Ground floor and first floor are SEPARATE measurements. They are NOT the same. Even in a double storey building, the ground floor plan and first floor plan have different wall layouts and often different footprints. If only one floor plan is shown, put all values in groundFloor and set firstFloor values to 0.
+- For single storey buildings: set ALL firstFloor values to 0.
+- For double storey: measure ground floor plan and first floor plan INDEPENDENTLY. Do NOT copy ground floor values to first floor.
 - IMPORTANT: show your working in workingNotes so the user can verify every number.
 
 Return ONLY a valid JSON object with this EXACT structure:

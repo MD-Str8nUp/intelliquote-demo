@@ -50,11 +50,13 @@ export interface ExtractedMeasurements {
   floorSqMetres: number     // ground + first (computed)
   roofSqMetres: number
   steelTonnage: number
+  steelPosts: number          // number of steel posts
   // Editable rates
   wallRatePerLM: number      // default 85
   floorRatePerM2: number     // default 95
   roofRatePerM2: number      // default 65
   steelRatePerT: number      // default 3500
+  steelPostRate: number      // default 450 per post
 }
 
 export interface WizardPreferences {
@@ -155,10 +157,12 @@ const DEFAULT_MEASUREMENTS: ExtractedMeasurements = {
   floorSqMetres: 0,
   roofSqMetres: 0,
   steelTonnage: 0,
+  steelPosts: 0,
   wallRatePerLM: 85,
   floorRatePerM2: 95,
   roofRatePerM2: 65,
   steelRatePerT: 3500,
+  steelPostRate: 450,
 }
 
 const DEFAULT_WIZARD_PREFERENCES: WizardPreferences = {

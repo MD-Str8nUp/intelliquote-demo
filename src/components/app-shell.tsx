@@ -28,7 +28,6 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'new-quote', label: 'New Quote', icon: FilePlus },
   { id: 'quotes', label: 'Quote History', icon: FileStack },
-  { id: 'upload', label: 'Upload Plans', icon: Upload },
   { id: 'price-lists', label: 'Price Lists', icon: DollarSign },
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'finance', label: 'Finance', icon: TrendingUp },

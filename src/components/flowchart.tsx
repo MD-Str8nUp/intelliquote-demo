@@ -676,28 +676,47 @@ export function FlowchartWizard() {
           </div>
         </div>
 
-        {/* Roof + Steel with rates */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-3">
-          <h2 className="text-lg font-semibold text-slate-900">Roof & Steel</h2>
-          <div className="flex items-center gap-3 py-2 border-b border-slate-100">
+        {/* Roof */}
+        <div className="bg-white rounded-xl border border-green-100 p-6 space-y-3">
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-green-500" /> Roof
+          </h2>
+          <div className="flex items-center gap-3 py-2">
             <span className="text-sm font-medium text-slate-700 w-24">Roof Area</span>
-            <input type="number" value={measurements.roofSqMetres || ''} onChange={e => updateMeasurement('roofSqMetres', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="0" />
+            <input type="number" value={measurements.roofSqMetres || ''} onChange={e => updateMeasurement('roofSqMetres', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-green-500 text-sm" placeholder="0" />
             <span className="text-xs text-slate-500">m²</span>
             <span className="text-slate-400 text-xs mx-1">x $</span>
-            <input type="number" value={measurements.roofRatePerM2 || ''} onChange={e => updateMeasurement('roofRatePerM2', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="65" />
+            <input type="number" value={measurements.roofRatePerM2 || ''} onChange={e => updateMeasurement('roofRatePerM2', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-green-500 text-sm" placeholder="65" />
             <span className="text-xs text-slate-500">/m²</span>
             <span className="text-slate-400 text-xs mx-1">=</span>
             <span className="font-semibold text-slate-900 text-sm">${((measurements.roofSqMetres || 0) * (measurements.roofRatePerM2 || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
           </div>
-          <div className="flex items-center gap-3 py-2">
-            <span className="text-sm font-medium text-slate-700 w-24">Steel</span>
-            <input type="number" step="0.01" value={measurements.steelTonnage || ''} onChange={e => updateMeasurement('steelTonnage', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="0" />
+        </div>
+
+        {/* Steel */}
+        <div className="bg-white rounded-xl border border-purple-100 p-6 space-y-3">
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-purple-500" /> Steel
+          </h2>
+          <div className="flex items-center gap-3 py-2 border-b border-slate-100">
+            <span className="text-sm font-medium text-slate-700 w-24">Tonnage</span>
+            <input type="number" step="0.01" value={measurements.steelTonnage || ''} onChange={e => updateMeasurement('steelTonnage', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-purple-500 text-sm" placeholder="0" />
             <span className="text-xs text-slate-500">T</span>
             <span className="text-slate-400 text-xs mx-1">x $</span>
-            <input type="number" value={measurements.steelRatePerT || ''} onChange={e => updateMeasurement('steelRatePerT', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="3500" />
+            <input type="number" value={measurements.steelRatePerT || ''} onChange={e => updateMeasurement('steelRatePerT', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-purple-500 text-sm" placeholder="3500" />
             <span className="text-xs text-slate-500">/T</span>
             <span className="text-slate-400 text-xs mx-1">=</span>
             <span className="font-semibold text-slate-900 text-sm">${((measurements.steelTonnage || 0) * (measurements.steelRatePerT || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex items-center gap-3 py-2">
+            <span className="text-sm font-medium text-slate-700 w-24">Steel Posts</span>
+            <input type="number" value={measurements.steelPosts || ''} onChange={e => updateMeasurement('steelPosts', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-purple-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">EA</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.steelPostRate || ''} onChange={e => updateMeasurement('steelPostRate', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-purple-500 text-sm" placeholder="450" />
+            <span className="text-xs text-slate-500">/EA</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.steelPosts || 0) * (measurements.steelPostRate || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
           </div>
         </div>
 
