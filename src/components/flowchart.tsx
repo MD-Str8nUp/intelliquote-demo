@@ -1,48 +1,70 @@
 'use client'
 
 import React, { useState, useRef, useCallback } from 'react'
-import { useAppContext, FlowchartStep, Quote } from './context'
+import { useAppContext, FlowchartStep, Quote, ExtractedMeasurements } from './context'
 import { CheckCircle, Upload, FileText, X, Loader2, Pencil } from 'lucide-react'
 import { uploadPlan } from '@/lib/supabase'
 
 const STEPS: FlowchartStep[] = [
   {
-    id: 'project-type',
-    question: 'What type of project is this?',
-    description: 'Select the primary construction type',
+    id: 'stud-spacing',
+    question: 'What is the spacing of timber studs?',
+    description: 'Standard stud spacing for the frame',
     type: 'single-select',
     options: [
-      { id: 'new-build', label: 'New Build', value: 'new-build', description: 'Complete new construction' },
-      { id: 'extension', label: 'Extension', value: 'extension', description: 'Adding to existing structure' },
-      { id: 'renovation', label: 'Renovation', value: 'renovation', description: 'Modifying existing structure' },
-      { id: 'granny-flat', label: 'Granny Flat', value: 'granny-flat', description: 'Secondary dwelling' },
+      { id: '300', label: '300mm', value: '300', description: 'Heavy load / double storey' },
+      { id: '450', label: '450mm', value: '450', description: 'Standard residential' },
+      { id: '500', label: '500mm', value: '500' },
+      { id: '600', label: '600mm', value: '600', description: 'Light load / internal walls' },
     ],
   },
   {
-    id: 'storeys',
-    question: 'How many storeys?',
+    id: 'fibro-eaves',
+    question: 'Include fibro eaves in this quote?',
     type: 'single-select',
     options: [
-      { id: '1', label: 'Single Storey', value: '1', description: 'Ground floor only' },
-      { id: '2', label: 'Double Storey', value: '2', description: 'Two levels' },
+      { id: 'yes', label: 'Yes', value: 'yes', description: 'Include fibro eave installation' },
+      { id: 'no', label: 'No', value: 'no', description: 'Eaves handled separately' },
+    ],
+  },
+  {
+    id: 'steel-beams',
+    question: 'Include steel beams in this quotation?',
+    type: 'single-select',
+    options: [
+      { id: 'yes', label: 'Yes', value: 'yes', description: 'Steel beams, posts, and lintels included' },
+      { id: 'no', label: 'No', value: 'no', description: 'Steel supplied by others' },
+    ],
+  },
+  {
+    id: 'travel-expenses',
+    question: 'Is travel expenses required for this quotation?',
+    description: 'If the job is far from your base and travel needs to be factored into pricing',
+    type: 'single-select',
+    options: [
+      { id: 'yes', label: 'Yes', value: 'yes', description: 'Include travel/transport costs' },
+      { id: 'no', label: 'No', value: 'no', description: 'Local job, no travel needed' },
+    ],
+  },
+  {
+    id: 'window-install',
+    question: 'Include installation of windows in your quotation?',
+    type: 'single-select',
+    options: [
+      { id: 'yes', label: 'Yes', value: 'yes', description: 'Window install included in scope' },
+      { id: 'no', label: 'No', value: 'no', description: 'Windows installed by others' },
     ],
   },
   {
     id: 'upload-plans',
     question: 'Upload your plans',
-    description: 'Upload architectural and structural PDFs. IntelliQuote will extract key measurements.',
+    description: 'Upload architectural and structural PDFs. IntelliQuote will extract key measurements. All other data can be provided in the context box on the next screen.',
     type: 'file-upload',
     validation: { required: true },
   },
 ]
 
-// The editable measurements that come from extraction
-interface ExtractedMeasurements {
-  wallLinealMetres: number
-  floorSqMetres: number
-  roofSqMetres: number
-  steelTonnage: number
-}
+// ExtractedMeasurements imported from context
 
 interface PlanFile {
   id: string
@@ -57,17 +79,16 @@ interface PlanFile {
 }
 
 export function FlowchartWizard() {
-  const { currentStep, setCurrentStep, answers, addAnswer, setCurrentQuote, setCurrentPage } = useAppContext()
+  const { currentStep, setCurrentStep, answers, addAnswer, setCurrentQuote, setCurrentPage, extractedMeasurements, setExtractedMeasurements } = useAppContext()
   const [planFiles, setPlanFiles] = useState<PlanFile[]>([])
   const [extractionComplete, setExtractionComplete] = useState(false)
 
   // Phase: 'wizard' -> 'review' -> 'generating' -> 'done'
   const [phase, setPhase] = useState<'wizard' | 'review' | 'generating' | 'done'>('wizard')
 
-  // Editable measurements (populated from extraction, user can override)
-  const [measurements, setMeasurements] = useState<ExtractedMeasurements>({
-    wallLinealMetres: 0, floorSqMetres: 0, roofSqMetres: 0, steelTonnage: 0,
-  })
+  // Use context measurements (shared with quote-generator)
+  const measurements = extractedMeasurements
+  const setMeasurements = setExtractedMeasurements
 
   // Additional context the user can inject to steer the AI
   const [additionalContext, setAdditionalContext] = useState('')
@@ -133,20 +154,20 @@ export function FlowchartWizard() {
         const d = extractResult.extractedData
         extractedData = { ...d }
 
-        // Auto-populate editable measurements from architectural extraction
+        // Auto-populate editable measurements from extraction
         if (planType === 'architectural') {
-          setMeasurements(prev => ({
-            ...prev,
-            wallLinealMetres: Math.round(Number(d.wallLinealMetres) || prev.wallLinealMetres),
-            floorSqMetres: Math.round(Number(d.floorSqMetres) || prev.floorSqMetres),
-            roofSqMetres: Math.round(Number(d.roofSqMetres) || prev.roofSqMetres),
-          }))
+          setMeasurements({
+            ...measurements,
+            wallLinealMetres: Math.round(Number(d.wallLinealMetres) || measurements.wallLinealMetres),
+            floorSqMetres: Math.round(Number(d.floorSqMetres) || measurements.floorSqMetres),
+            roofSqMetres: Math.round(Number(d.roofSqMetres) || measurements.roofSqMetres),
+          })
         }
         if (planType === 'structural') {
-          setMeasurements(prev => ({
-            ...prev,
-            steelTonnage: Number(d.steelTonnage) ? Math.round(Number(d.steelTonnage) * 100) / 100 : prev.steelTonnage,
-          }))
+          setMeasurements({
+            ...measurements,
+            steelTonnage: Number(d.steelTonnage) ? Math.round(Number(d.steelTonnage) * 100) / 100 : measurements.steelTonnage,
+          })
         }
       } else {
         setPlanFiles(prev => prev.map(p => p.id === fileId ? {
@@ -179,12 +200,15 @@ export function FlowchartWizard() {
     setPhase('generating')
     await new Promise(resolve => setTimeout(resolve, 2000))
 
-    const storeys = Number(answers.find(a => a.stepId === 'storeys')?.value || 1) as 1 | 2
-    const projectType = (answers.find(a => a.stepId === 'project-type')?.value as string) || 'new-build'
+    const studSpacing = (answers.find(a => a.stepId === 'stud-spacing')?.value as string) || '450'
+    const fibroEaves = (answers.find(a => a.stepId === 'fibro-eaves')?.value as string) || 'no'
+    const steelBeams = (answers.find(a => a.stepId === 'steel-beams')?.value as string) || 'no'
+    const travelExpenses = (answers.find(a => a.stepId === 'travel-expenses')?.value as string) || 'no'
+    const windowInstall = (answers.find(a => a.stepId === 'window-install')?.value as string) || 'no'
 
     const newQuote: Quote = {
       id: `quote-${Date.now()}`,
-      projectName: `${projectType.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} - ${measurements.floorSqMetres}m\u00b2`,
+      projectName: `New Quote - ${measurements.floorSqMetres}m\u00b2 @ ${studSpacing}mm`,
       clientName: 'CCC Group',
       address: 'Sydney NSW',
       createdAt: new Date().toISOString().split('T')[0],
@@ -197,9 +221,9 @@ export function FlowchartWizard() {
         windClass: null,
         soilType: null,
         roofMaterial: null,
-        buildingClass: '1a',
+        buildingClass: null,
         totalFloorArea: measurements.floorSqMetres,
-        storeys,
+        storeys: 1,
       },
     }
 
@@ -228,7 +252,7 @@ export function FlowchartWizard() {
               <input
                 type="number"
                 value={measurements.wallLinealMetres || ''}
-                onChange={e => setMeasurements(prev => ({ ...prev, wallLinealMetres: Number(e.target.value) || 0 }))}
+                onChange={e => setMeasurements({ ...measurements, wallLinealMetres: Number(e.target.value) || 0 })}
                 className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 placeholder="0"
               />
@@ -240,7 +264,7 @@ export function FlowchartWizard() {
               <input
                 type="number"
                 value={measurements.floorSqMetres || ''}
-                onChange={e => setMeasurements(prev => ({ ...prev, floorSqMetres: Number(e.target.value) || 0 }))}
+                onChange={e => setMeasurements({ ...measurements, floorSqMetres: Number(e.target.value) || 0 })}
                 className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 placeholder="0"
               />
@@ -252,7 +276,7 @@ export function FlowchartWizard() {
               <input
                 type="number"
                 value={measurements.roofSqMetres || ''}
-                onChange={e => setMeasurements(prev => ({ ...prev, roofSqMetres: Number(e.target.value) || 0 }))}
+                onChange={e => setMeasurements({ ...measurements, roofSqMetres: Number(e.target.value) || 0 })}
                 className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 placeholder="0"
               />
@@ -265,7 +289,7 @@ export function FlowchartWizard() {
                 type="number"
                 step="0.01"
                 value={measurements.steelTonnage || ''}
-                onChange={e => setMeasurements(prev => ({ ...prev, steelTonnage: Number(e.target.value) || 0 }))}
+                onChange={e => setMeasurements({ ...measurements, steelTonnage: Number(e.target.value) || 0 })}
                 className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 placeholder="0"
               />

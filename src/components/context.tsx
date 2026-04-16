@@ -41,6 +41,13 @@ export interface QuoteMetadata {
   extractedAt?: string
 }
 
+export interface ExtractedMeasurements {
+  wallLinealMetres: number
+  floorSqMetres: number
+  roofSqMetres: number
+  steelTonnage: number
+}
+
 export interface UploadedFile {
   id: string
   name: string
@@ -77,6 +84,8 @@ interface AppContextType {
   setCurrentPage: (page: string) => void
   currentQuote: Quote | null
   setCurrentQuote: (quote: Quote | null) => void
+  extractedMeasurements: ExtractedMeasurements
+  setExtractedMeasurements: (m: ExtractedMeasurements) => void
   quotes: Quote[]
   uploadedFiles: UploadedFile[]
   addUploadedFile: (file: UploadedFile) => void
@@ -202,6 +211,7 @@ const SAMPLE_QUOTES: Quote[] = [
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState('dashboard')
   const [currentQuote, setCurrentQuote] = useState<Quote | null>(null)
+  const [extractedMeasurements, setExtractedMeasurements] = useState<ExtractedMeasurements>({ wallLinealMetres: 0, floorSqMetres: 0, roofSqMetres: 0, steelTonnage: 0 })
   const [quotes] = useState<Quote[]>(SAMPLE_QUOTES)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [currentStep, setCurrentStep] = useState(0)
@@ -239,6 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       currentPage, setCurrentPage,
       currentQuote, setCurrentQuote,
+      extractedMeasurements, setExtractedMeasurements,
       quotes,
       uploadedFiles, addUploadedFile, updateUploadedFile, removeUploadedFile,
       currentStep, answers, setCurrentStep, addAnswer,

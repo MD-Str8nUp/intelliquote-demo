@@ -69,7 +69,7 @@ interface LineItem {
 }
 
 export function QuoteGenerator() {
-  const { currentQuote, setCurrentPage } = useAppContext()
+  const { currentQuote, setCurrentPage, extractedMeasurements, setExtractedMeasurements } = useAppContext()
   const [activeTab, setActiveTab] = useState<'measurements' | 'cutting-list' | 'labour' | 'summary' | 'branding'>('measurements')
 
   // Editable project details
@@ -78,11 +78,15 @@ export function QuoteGenerator() {
   const [address, setAddress] = useState(currentQuote?.address || 'Sydney NSW')
   const [editingDetails, setEditingDetails] = useState(false)
 
-  // Editable measurements (Tab 1)
-  const [wallLM, setWallLM] = useState(currentQuote?.metadata?.totalFloorArea ? Math.round((currentQuote.metadata.totalFloorArea) * 0.55) : 0)
-  const [floorM2, setFloorM2] = useState(currentQuote?.metadata?.totalFloorArea || 0)
-  const [roofM2, setRoofM2] = useState(currentQuote?.metadata?.totalFloorArea ? Math.round((currentQuote.metadata.totalFloorArea) * 1.15) : 0)
-  const [steelT, setSteelT] = useState(0)
+  // Measurements from context (same data that was extracted and reviewed)
+  const wallLM = extractedMeasurements.wallLinealMetres
+  const floorM2 = extractedMeasurements.floorSqMetres
+  const roofM2 = extractedMeasurements.roofSqMetres
+  const steelT = extractedMeasurements.steelTonnage
+  const setWallLM = (v: number) => setExtractedMeasurements({ ...extractedMeasurements, wallLinealMetres: v })
+  const setFloorM2 = (v: number) => setExtractedMeasurements({ ...extractedMeasurements, floorSqMetres: v })
+  const setRoofM2 = (v: number) => setExtractedMeasurements({ ...extractedMeasurements, roofSqMetres: v })
+  const setSteelT = (v: number) => setExtractedMeasurements({ ...extractedMeasurements, steelTonnage: v })
 
   // Cutting list items (Tab 2 - for internal use, NOT added to total)
   const [cuttingList, setCuttingList] = useState<LineItem[]>([
