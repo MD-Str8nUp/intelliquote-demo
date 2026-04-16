@@ -8,6 +8,7 @@ import { QuoteGenerator } from './quote-generator'
 import { QuoteHistory } from './quote-history'
 import { DataUploadPage } from './upload'
 import { SettingsPage } from './settings'
+import { FinancePage } from './finance'
 import {
   LayoutDashboard,
   FilePlus,
@@ -15,6 +16,7 @@ import {
   Upload,
   DollarSign,
   Settings,
+  TrendingUp,
   ChevronLeft,
   ChevronRight,
   Bell,
@@ -29,6 +31,7 @@ const navItems = [
   { id: 'upload', label: 'Upload Plans', icon: Upload },
   { id: 'price-lists', label: 'Price Lists', icon: DollarSign },
   { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'finance', label: 'Finance', icon: TrendingUp },
 ]
 
 const pageLabels: Record<string, string> = {
@@ -39,6 +42,7 @@ const pageLabels: Record<string, string> = {
   'price-lists': 'Price Lists',
   settings: 'Settings',
   'view-quote': 'Quote Details',
+  finance: 'Finance',
 }
 
 export function AppShell() {
@@ -160,6 +164,7 @@ export function AppShell() {
           {currentPage === 'view-quote' && <QuoteGenerator />}
           {currentPage === 'settings' && <SettingsPage />}
           {currentPage === 'price-lists' && <PriceListsPlaceholder />}
+          {currentPage === 'finance' && <FinancePage />}
         </main>
       </div>
     </div>

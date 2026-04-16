@@ -42,10 +42,35 @@ export interface QuoteMetadata {
 }
 
 export interface ExtractedMeasurements {
-  wallLinealMetres: number
-  floorSqMetres: number
+  groundFloorWallLM: number
+  firstFloorWallLM: number
+  wallLinealMetres: number  // ground + first (computed)
+  groundFloorAreaM2: number
+  firstFloorAreaM2: number
+  floorSqMetres: number     // ground + first (computed)
   roofSqMetres: number
   steelTonnage: number
+  // Editable rates
+  wallRatePerLM: number      // default 85
+  floorRatePerM2: number     // default 95
+  roofRatePerM2: number      // default 65
+  steelRatePerT: number      // default 3500
+}
+
+export interface WizardPreferences {
+  studSpacing: number       // 300, 450, 500, 600
+  fibroEaves: boolean
+  steelBeams: boolean
+  travelExpenses: boolean
+  windowInstall: boolean
+}
+
+export interface LineItem {
+  id: string
+  description: string
+  quantity: number
+  unit: string
+  unitPrice: number
 }
 
 export interface UploadedFile {
@@ -85,7 +110,7 @@ interface AppContextType {
   currentQuote: Quote | null
   setCurrentQuote: (quote: Quote | null) => void
   extractedMeasurements: ExtractedMeasurements
-  setExtractedMeasurements: (m: ExtractedMeasurements) => void
+  setExtractedMeasurements: (m: ExtractedMeasurements | ((prev: ExtractedMeasurements) => ExtractedMeasurements)) => void
   quotes: Quote[]
   uploadedFiles: UploadedFile[]
   addUploadedFile: (file: UploadedFile) => void
@@ -99,6 +124,16 @@ interface AppContextType {
   toggleSidebar: () => void
   isLoading: boolean
   setIsLoading: (loading: boolean) => void
+  wizardPreferences: WizardPreferences
+  setWizardPreferences: (prefs: WizardPreferences | ((prev: WizardPreferences) => WizardPreferences)) => void
+  wizardPhase: 'wizard' | 'review' | 'generating' | 'done'
+  setWizardPhase: (phase: 'wizard' | 'review' | 'generating' | 'done') => void
+  cuttingList: LineItem[]
+  setCuttingList: (items: LineItem[] | ((prev: LineItem[]) => LineItem[])) => void
+  labourItems: LineItem[]
+  setLabourItems: (items: LineItem[] | ((prev: LineItem[]) => LineItem[])) => void
+  extractionNotes: string
+  setExtractionNotes: (notes: string) => void
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -107,6 +142,30 @@ export function useAppContext() {
   const context = useContext(AppContext)
   if (!context) throw new Error('useAppContext must be used within AppProvider')
   return context
+}
+
+// Default measurements with rates
+const DEFAULT_MEASUREMENTS: ExtractedMeasurements = {
+  groundFloorWallLM: 0,
+  firstFloorWallLM: 0,
+  wallLinealMetres: 0,
+  groundFloorAreaM2: 0,
+  firstFloorAreaM2: 0,
+  floorSqMetres: 0,
+  roofSqMetres: 0,
+  steelTonnage: 0,
+  wallRatePerLM: 85,
+  floorRatePerM2: 95,
+  roofRatePerM2: 65,
+  steelRatePerT: 3500,
+}
+
+const DEFAULT_WIZARD_PREFERENCES: WizardPreferences = {
+  studSpacing: 450,
+  fibroEaves: false,
+  steelBeams: false,
+  travelExpenses: false,
+  windowInstall: false,
 }
 
 // Sample data for demo
@@ -211,13 +270,18 @@ const SAMPLE_QUOTES: Quote[] = [
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState('dashboard')
   const [currentQuote, setCurrentQuote] = useState<Quote | null>(null)
-  const [extractedMeasurements, setExtractedMeasurements] = useState<ExtractedMeasurements>({ wallLinealMetres: 0, floorSqMetres: 0, roofSqMetres: 0, steelTonnage: 0 })
+  const [extractedMeasurements, setExtractedMeasurements] = useState<ExtractedMeasurements>(DEFAULT_MEASUREMENTS)
   const [quotes] = useState<Quote[]>(SAMPLE_QUOTES)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [currentStep, setCurrentStep] = useState(0)
   const [answers, setAnswers] = useState<FlowchartAnswer[]>([])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [wizardPreferences, setWizardPreferences] = useState<WizardPreferences>(DEFAULT_WIZARD_PREFERENCES)
+  const [wizardPhase, setWizardPhase] = useState<'wizard' | 'review' | 'generating' | 'done'>('wizard')
+  const [cuttingList, setCuttingList] = useState<LineItem[]>([])
+  const [labourItems, setLabourItems] = useState<LineItem[]>([])
+  const [extractionNotes, setExtractionNotes] = useState('')
 
   const addUploadedFile = useCallback((file: UploadedFile) => {
     setUploadedFiles(prev => [...prev, file])
@@ -255,6 +319,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentStep, answers, setCurrentStep, addAnswer,
       sidebarCollapsed, toggleSidebar,
       isLoading, setIsLoading,
+      wizardPreferences, setWizardPreferences,
+      wizardPhase, setWizardPhase,
+      cuttingList, setCuttingList,
+      labourItems, setLabourItems,
+      extractionNotes, setExtractionNotes,
     }}>
       {children}
     </AppContext.Provider>
