@@ -408,20 +408,23 @@ export function FlowchartWizard() {
           confidence = d.confidence ?? null
 
           // Map API response to ExtractedMeasurements
+          // API returns flat fields: groundFloorWallLM, firstFloorWallLM, groundFloorAreaM2, etc.
           if (planType === 'architectural') {
+            const gfWall = Math.round(Number(d.groundFloorWallLM) || 0)
+            const ffWall = Math.round(Number(d.firstFloorWallLM) || 0)
+            const gfArea = Math.round(Number(d.groundFloorAreaM2) || 0)
+            const ffArea = Math.round(Number(d.firstFloorAreaM2) || 0)
+            const roof = Math.round(Number(d.roofSqMetres) || 0)
+
             setExtractedMeasurements(prev => ({
               ...prev,
-              groundFloorWallLM: Math.round(Number(d.groundFloor?.totalWallLM) || prev.groundFloorWallLM),
-              firstFloorWallLM: Math.round(Number(d.firstFloor?.totalWallLM) || prev.firstFloorWallLM),
-              wallLinealMetres:
-                Math.round(Number(d.groundFloor?.totalWallLM) || prev.groundFloorWallLM) +
-                Math.round(Number(d.firstFloor?.totalWallLM) || prev.firstFloorWallLM),
-              groundFloorAreaM2: Math.round(Number(d.groundFloor?.areaM2) || prev.groundFloorAreaM2),
-              firstFloorAreaM2: Math.round(Number(d.firstFloor?.areaM2) || prev.firstFloorAreaM2),
-              floorSqMetres:
-                Math.round(Number(d.groundFloor?.areaM2) || prev.groundFloorAreaM2) +
-                Math.round(Number(d.firstFloor?.areaM2) || prev.firstFloorAreaM2),
-              roofSqMetres: Math.round(Number(d.roofSqMetres) || prev.roofSqMetres),
+              groundFloorWallLM: gfWall || prev.groundFloorWallLM,
+              firstFloorWallLM: ffWall || prev.firstFloorWallLM,
+              wallLinealMetres: (gfWall || prev.groundFloorWallLM) + (ffWall || prev.firstFloorWallLM),
+              groundFloorAreaM2: gfArea || prev.groundFloorAreaM2,
+              firstFloorAreaM2: ffArea || prev.firstFloorAreaM2,
+              floorSqMetres: (gfArea || prev.groundFloorAreaM2) + (ffArea || prev.firstFloorAreaM2),
+              roofSqMetres: roof || prev.roofSqMetres,
             }))
 
             // Save working notes
@@ -601,181 +604,98 @@ export function FlowchartWizard() {
           </p>
         </div>
 
-        {/* Ground Floor */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        {/* Ground Floor - measurements with rates side by side */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-3">
           <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <Pencil className="w-4 h-4 text-amber-500" /> Ground Floor
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Wall Lineal Metres (LM)
-              </label>
-              <input
-                type="number"
-                value={measurements.groundFloorWallLM || ''}
-                onChange={e => updateMeasurement('groundFloorWallLM', Number(e.target.value) || 0)}
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="0"
-              />
-              <p className="text-xs text-slate-400 mt-1">External + internal walls, ground level</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Floor Area (m²)
-              </label>
-              <input
-                type="number"
-                value={measurements.groundFloorAreaM2 || ''}
-                onChange={e =>
-                  updateMeasurement('groundFloorAreaM2', Number(e.target.value) || 0)
-                }
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="0"
-              />
-              <p className="text-xs text-slate-400 mt-1">Ground floor total area</p>
-            </div>
+          {/* Walls row: measurement + rate */}
+          <div className="flex items-center gap-3 py-2 border-b border-slate-100">
+            <span className="text-sm font-medium text-slate-700 w-24">Walls</span>
+            <input type="number" value={measurements.groundFloorWallLM || ''} onChange={e => updateMeasurement('groundFloorWallLM', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">LM</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.wallRatePerLM || ''} onChange={e => updateMeasurement('wallRatePerLM', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="85" />
+            <span className="text-xs text-slate-500">/LM</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.groundFloorWallLM || 0) * (measurements.wallRatePerLM || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+          </div>
+          {/* Floor area row: measurement + rate */}
+          <div className="flex items-center gap-3 py-2">
+            <span className="text-sm font-medium text-slate-700 w-24">Floor Area</span>
+            <input type="number" value={measurements.groundFloorAreaM2 || ''} onChange={e => updateMeasurement('groundFloorAreaM2', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">m²</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.floorRatePerM2 || ''} onChange={e => updateMeasurement('floorRatePerM2', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="95" />
+            <span className="text-xs text-slate-500">/m²</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.groundFloorAreaM2 || 0) * (measurements.floorRatePerM2 || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
           </div>
         </div>
 
-        {/* First Floor */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        {/* First Floor - measurements with rates side by side */}
+        <div className="bg-white rounded-xl border border-blue-100 p-6 space-y-3">
           <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <Pencil className="w-4 h-4 text-blue-500" /> First Floor
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Wall Lineal Metres (LM)
-              </label>
-              <input
-                type="number"
-                value={measurements.firstFloorWallLM || ''}
-                onChange={e => updateMeasurement('firstFloorWallLM', Number(e.target.value) || 0)}
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                placeholder="0"
-              />
-              <p className="text-xs text-slate-400 mt-1">External + internal walls, first floor</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Floor Area (m²)
-              </label>
-              <input
-                type="number"
-                value={measurements.firstFloorAreaM2 || ''}
-                onChange={e =>
-                  updateMeasurement('firstFloorAreaM2', Number(e.target.value) || 0)
-                }
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                placeholder="0"
-              />
-              <p className="text-xs text-slate-400 mt-1">First floor total area</p>
-            </div>
+          <div className="flex items-center gap-3 py-2 border-b border-slate-100">
+            <span className="text-sm font-medium text-slate-700 w-24">Walls</span>
+            <input type="number" value={measurements.firstFloorWallLM || ''} onChange={e => updateMeasurement('firstFloorWallLM', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">LM</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.wallRatePerLM || ''} onChange={e => updateMeasurement('wallRatePerLM', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-sm" placeholder="85" />
+            <span className="text-xs text-slate-500">/LM</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.firstFloorWallLM || 0) * (measurements.wallRatePerLM || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex items-center gap-3 py-2">
+            <span className="text-sm font-medium text-slate-700 w-24">Floor Area</span>
+            <input type="number" value={measurements.firstFloorAreaM2 || ''} onChange={e => updateMeasurement('firstFloorAreaM2', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">m²</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.floorRatePerM2 || ''} onChange={e => updateMeasurement('floorRatePerM2', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-sm" placeholder="95" />
+            <span className="text-xs text-slate-500">/m²</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.firstFloorAreaM2 || 0) * (measurements.floorRatePerM2 || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
           </div>
         </div>
 
-        {/* Auto-calculated totals */}
-        <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Calculated Totals
-          </h2>
+        {/* Totals row */}
+        <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg p-4 border border-slate-100">
+            <div className="bg-white rounded-lg p-3 border border-slate-100">
               <p className="text-xs text-slate-400 mb-1">Total Wall LM</p>
-              <p className="text-2xl font-bold text-slate-900">
-                {measurements.wallLinealMetres}{' '}
-                <span className="text-sm font-medium text-slate-400">LM</span>
-              </p>
+              <p className="text-xl font-bold text-slate-900">{measurements.wallLinealMetres} <span className="text-sm font-medium text-slate-400">LM</span></p>
             </div>
-            <div className="bg-white rounded-lg p-4 border border-slate-100">
+            <div className="bg-white rounded-lg p-3 border border-slate-100">
               <p className="text-xs text-slate-400 mb-1">Total Floor Area</p>
-              <p className="text-2xl font-bold text-slate-900">
-                {measurements.floorSqMetres}{' '}
-                <span className="text-sm font-medium text-slate-400">m²</span>
-              </p>
+              <p className="text-xl font-bold text-slate-900">{measurements.floorSqMetres} <span className="text-sm font-medium text-slate-400">m²</span></p>
             </div>
           </div>
         </div>
 
-        {/* Roof + Steel */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        {/* Roof + Steel with rates */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-3">
           <h2 className="text-lg font-semibold text-slate-900">Roof & Steel</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Roof Area (m²)
-              </label>
-              <input
-                type="number"
-                value={measurements.roofSqMetres || ''}
-                onChange={e => updateMeasurement('roofSqMetres', Number(e.target.value) || 0)}
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="0"
-              />
-              <p className="text-xs text-slate-400 mt-1">Including pitch and eaves</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Steel Tonnage (T)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={measurements.steelTonnage || ''}
-                onChange={e => updateMeasurement('steelTonnage', Number(e.target.value) || 0)}
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="0"
-              />
-              <p className="text-xs text-slate-400 mt-1">Total steel required (beams, lintels, posts)</p>
-            </div>
+          <div className="flex items-center gap-3 py-2 border-b border-slate-100">
+            <span className="text-sm font-medium text-slate-700 w-24">Roof Area</span>
+            <input type="number" value={measurements.roofSqMetres || ''} onChange={e => updateMeasurement('roofSqMetres', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">m²</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.roofRatePerM2 || ''} onChange={e => updateMeasurement('roofRatePerM2', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="65" />
+            <span className="text-xs text-slate-500">/m²</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.roofSqMetres || 0) * (measurements.roofRatePerM2 || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
           </div>
-        </div>
-
-        {/* Rates */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Rates</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Wall $/LM</label>
-              <input
-                type="number"
-                value={measurements.wallRatePerLM || ''}
-                onChange={e => updateMeasurement('wallRatePerLM', Number(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-sm font-semibold border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="85"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Floor $/m²</label>
-              <input
-                type="number"
-                value={measurements.floorRatePerM2 || ''}
-                onChange={e => updateMeasurement('floorRatePerM2', Number(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-sm font-semibold border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="95"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Roof $/m²</label>
-              <input
-                type="number"
-                value={measurements.roofRatePerM2 || ''}
-                onChange={e => updateMeasurement('roofRatePerM2', Number(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-sm font-semibold border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="65"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Steel $/T</label>
-              <input
-                type="number"
-                value={measurements.steelRatePerT || ''}
-                onChange={e => updateMeasurement('steelRatePerT', Number(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-sm font-semibold border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                placeholder="3500"
-              />
-            </div>
+          <div className="flex items-center gap-3 py-2">
+            <span className="text-sm font-medium text-slate-700 w-24">Steel</span>
+            <input type="number" step="0.01" value={measurements.steelTonnage || ''} onChange={e => updateMeasurement('steelTonnage', Number(e.target.value) || 0)} className="w-24 px-3 py-2 text-right font-semibold border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="0" />
+            <span className="text-xs text-slate-500">T</span>
+            <span className="text-slate-400 text-xs mx-1">x $</span>
+            <input type="number" value={measurements.steelRatePerT || ''} onChange={e => updateMeasurement('steelRatePerT', Number(e.target.value) || 0)} className="w-20 px-2 py-2 text-right border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500 text-sm" placeholder="3500" />
+            <span className="text-xs text-slate-500">/T</span>
+            <span className="text-slate-400 text-xs mx-1">=</span>
+            <span className="font-semibold text-slate-900 text-sm">${((measurements.steelTonnage || 0) * (measurements.steelRatePerT || 0)).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
           </div>
         </div>
 
